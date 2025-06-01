@@ -1,4 +1,14 @@
-# From Lovable project to FactoryAI project self hosted on IPFS
+
+<h1 align="center"> From Lovable project to FactoryAI project self hosted on IPFS </h1>
+<p align="center">
+  <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./images/main_00.png">
+      <img src="./images/main_00.png">
+  </picture>
+</p>
+
+
+
 
 ## Project info
 
@@ -77,9 +87,4 @@ Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-trick
 
 
 
-<p align="center">
-  <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="./images/main_00.png">
-      <img src="./images/main_00.png">
-  </picture>
-</p>
+
