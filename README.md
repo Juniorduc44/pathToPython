@@ -1,4 +1,4 @@
-# Welcome to your Lovable project
+# From Lovable project to FactoryAI project self hosted on IPFS
 
 ## Project info
 
