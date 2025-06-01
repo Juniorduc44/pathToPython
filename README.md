@@ -2,7 +2,9 @@
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/4c62f56e-6451-4979-8209-2423b9ec2d1a
+**Old URL**: https://lovable.dev/projects/4c62f56e-6451-4979-8209-2423b9ec2d1a
+**New URL**: https://dweb.link/ipfs/bafybeifxvagbphcgdezkdtd2knyygu74yaltexaqnjmvfvkoi5pujoqmeq?filename=disthttps://dweb.link/ipfs/bafybeifxvagbphcgdezkdtd2knyygu74yaltexaqnjmvfvkoi5pujoqmeq?filename=dist
+
 
 ## How can I edit this code?
 
