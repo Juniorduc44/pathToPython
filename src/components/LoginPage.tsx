@@ -1,13 +1,14 @@
 /**
  * @file LoginPage.tsx
- * @version 1.0.0
+ * @version 1.1.0
  * @description Main login and account creation page for Python Quest.
  * Offers users options to log in with a keystore, create a new self-custody account,
  * or try the platform as a guest. Emphasizes user data sovereignty and security.
+ * Includes password reveal functionality for improved UX.
  *
  * @project Python Quest - A Gamified Python Learning Platform
  * @author Factory AI Development Team
- * @date May 31, 2025
+ * @date June 2, 2025
  */
 
 import React, { useState, FormEvent, ChangeEvent } from 'react';
@@ -16,25 +17,50 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { KeyRound, UserPlus, ShieldCheck, UploadCloud, LogIn, PlayCircle, Loader2, AlertTriangle } from 'lucide-react';
-import { ThemeProvider } from '@/contexts/ThemeContext'; // Assuming ThemeProvider is global or can be nested
+import { KeyRound, UserPlus, ShieldCheck, UploadCloud, LogIn, PlayCircle, Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
 const LoginPage: React.FC = () => {
-  const { createAccount, loginWithKeystore, switchToGuestMode, isLoading, error: authError } = useAuth();
+  const { createAccount, loginWithKeystore, switchToGuestMode, isLoading, error: authError, setError: setAuthError } = useAuth();
+
+  // State for active tab
+  const [activeTab, setActiveTab] = useState<string>("login");
 
   // State for Create Account form
   const [createPassword, setCreatePassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // State for Login with Keystore form
   const [keystoreFile, setKeystoreFile] = useState<File | null>(null);
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+
+  const clearLocalErrors = () => {
+    setCreateError(null);
+    setLoginError(null);
+    if (setAuthError) setAuthError(null); // Clear global auth error if method is available
+  };
+  
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab);
+    clearLocalErrors();
+    // Reset form fields when switching tabs for a cleaner experience
+    setCreatePassword('');
+    setConfirmPassword('');
+    setKeystoreFile(null);
+    const fileInput = document.getElementById('keystoreFile') as HTMLInputElement;
+    if (fileInput) fileInput.value = ''; // Reset file input
+    setLoginPassword('');
+  };
+
 
   const handleCreateAccount = async (e: FormEvent) => {
     e.preventDefault();
-    setCreateError(null);
+    clearLocalErrors();
     if (createPassword !== confirmPassword) {
       setCreateError("Passwords do not match.");
       return;
@@ -50,7 +76,7 @@ const LoginPage: React.FC = () => {
 
   const handleLoginWithKeystore = async (e: FormEvent) => {
     e.preventDefault();
-    setLoginError(null);
+    clearLocalErrors();
     if (!keystoreFile) {
       setLoginError("Please select your keystore file.");
       return;
@@ -67,10 +93,13 @@ const LoginPage: React.FC = () => {
     if (e.target.files && e.target.files[0]) {
       setKeystoreFile(e.target.files[0]);
       setLoginError(null); // Clear previous file errors
+    } else {
+      setKeystoreFile(null);
     }
   };
 
   const handleGuestMode = () => {
+    clearLocalErrors();
     switchToGuestMode();
     // AuthContext handles navigation/state change
   };
@@ -89,7 +118,7 @@ const LoginPage: React.FC = () => {
         </header>
 
         <main className="w-full max-w-md animate-slideUp">
-          <Tabs defaultValue="login" className="w-full">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
             <TabsList className="grid w-full grid-cols-3 bg-gray-800/80 border border-gray-700/60 rounded-lg backdrop-blur-sm">
               <TabsTrigger value="login" className="data-[state=active]:bg-cyan-600/80 data-[state=active]:text-white text-gray-300 hover:text-white transition-colors duration-200">
                 <LogIn size={18} className="mr-2" /> Login
@@ -126,18 +155,32 @@ const LoginPage: React.FC = () => {
                     </div>
                     <div className="space-y-1">
                       <label htmlFor="loginPassword" className="text-sm font-medium text-gray-300">Password</label>
-                      <Input
-                        id="loginPassword"
-                        type="password"
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        placeholder="Enter your keystore password"
-                        className="bg-gray-700 border-gray-600 text-white placeholder-gray-500"
-                        disabled={isLoading}
-                      />
+                      <div className="relative">
+                        <Input
+                          id="loginPassword"
+                          type={showLoginPassword ? "text" : "password"}
+                          value={loginPassword}
+                          onChange={(e) => {setLoginPassword(e.target.value); setLoginError(null); if (setAuthError) setAuthError(null);}}
+                          placeholder="Enter your keystore password"
+                          className="bg-gray-700 border-gray-600 text-white placeholder-gray-500 pr-10"
+                          disabled={isLoading}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-400 hover:text-gray-200"
+                          onClick={() => setShowLoginPassword(!showLoginPassword)}
+                          aria-pressed={showLoginPassword}
+                          aria-label={showLoginPassword ? "Hide password" : "Show password"}
+                          disabled={isLoading}
+                        >
+                          {showLoginPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </div>
-                    {loginError && <p className="text-sm text-red-400 flex items-center"><AlertTriangle size={16} className="mr-1" />{loginError}</p>}
-                    {authError && <p className="text-sm text-red-400 flex items-center"><AlertTriangle size={16} className="mr-1" />{authError}</p>}
+                    {loginError && <p className="text-sm text-red-400 flex items-center pt-1"><AlertTriangle size={16} className="mr-1 flex-shrink-0" />{loginError}</p>}
+                    {authError && activeTab === 'login' && <p className="text-sm text-red-400 flex items-center pt-1"><AlertTriangle size={16} className="mr-1 flex-shrink-0" />{authError}</p>}
                   </CardContent>
                   <CardFooter>
                     <Button type="submit" className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200" disabled={isLoading}>
@@ -162,30 +205,58 @@ const LoginPage: React.FC = () => {
                   <CardContent className="space-y-4">
                     <div className="space-y-1">
                       <label htmlFor="createPassword" className="text-sm font-medium text-gray-300">Password</label>
-                      <Input
-                        id="createPassword"
-                        type="password"
-                        value={createPassword}
-                        onChange={(e) => setCreatePassword(e.target.value)}
-                        placeholder="Choose a strong password (min. 8 characters)"
-                        className="bg-gray-700 border-gray-600 text-white placeholder-gray-500"
-                        disabled={isLoading}
-                      />
+                       <div className="relative">
+                        <Input
+                          id="createPassword"
+                          type={showCreatePassword ? "text" : "password"}
+                          value={createPassword}
+                          onChange={(e) => {setCreatePassword(e.target.value); setCreateError(null); if (setAuthError) setAuthError(null);}}
+                          placeholder="Choose a strong password (min. 8 characters)"
+                          className="bg-gray-700 border-gray-600 text-white placeholder-gray-500 pr-10"
+                          disabled={isLoading}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-400 hover:text-gray-200"
+                          onClick={() => setShowCreatePassword(!showCreatePassword)}
+                          aria-pressed={showCreatePassword}
+                          aria-label={showCreatePassword ? "Hide password" : "Show password"}
+                          disabled={isLoading}
+                        >
+                          {showCreatePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <label htmlFor="confirmPassword" className="text-sm font-medium text-gray-300">Confirm Password</label>
-                      <Input
-                        id="confirmPassword"
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirm your password"
-                        className="bg-gray-700 border-gray-600 text-white placeholder-gray-500"
-                        disabled={isLoading}
-                      />
+                      <div className="relative">
+                        <Input
+                          id="confirmPassword"
+                          type={showConfirmPassword ? "text" : "password"}
+                          value={confirmPassword}
+                          onChange={(e) => {setConfirmPassword(e.target.value); setCreateError(null); if (setAuthError) setAuthError(null);}}
+                          placeholder="Confirm your password"
+                          className="bg-gray-700 border-gray-600 text-white placeholder-gray-500 pr-10"
+                          disabled={isLoading}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-400 hover:text-gray-200"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          aria-pressed={showConfirmPassword}
+                          aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                          disabled={isLoading}
+                        >
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
                     </div>
-                    {createError && <p className="text-sm text-red-400 flex items-center"><AlertTriangle size={16} className="mr-1" />{createError}</p>}
-                     {authError && <p className="text-sm text-red-400 flex items-center"><AlertTriangle size={16} className="mr-1" />{authError}</p>}
+                    {createError && <p className="text-sm text-red-400 flex items-center pt-1"><AlertTriangle size={16} className="mr-1 flex-shrink-0" />{createError}</p>}
+                     {authError && activeTab === 'create' && <p className="text-sm text-red-400 flex items-center pt-1"><AlertTriangle size={16} className="mr-1 flex-shrink-0" />{authError}</p>}
                   </CardContent>
                   <CardFooter>
                     <Button type="submit" className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200" disabled={isLoading}>
