@@ -1,9 +1,10 @@
 /**
  * @file AuthContext.tsx
- * @version 1.1.0-ecdsa
+ * @version 1.2.0-ecdsa-progress
  * @description Manages user authentication state and keystore-based self-custody logic.
  * This context handles guest mode, keystore generation, login, logout, and ensures
  * client-side cryptographic operations for user security and data sovereignty.
+ * Keystore files now also store user progress metadata.
  * Uses ECDSA P-256 for key pairs and AES-GCM for keystore encryption.
  *
  * @project Python Quest - A Gamified Python Learning Platform
@@ -22,10 +23,9 @@ const KEYSTORE_KEY_LENGTH = 256; // AES-256
 const PBKDF2_ITERATIONS = 100000;
 const PBKDF2_HASH_ALGORITHM = 'SHA-256';
 
-// Switched to ECDSA P-256 for better browser compatibility
 const ASYMMETRIC_KEY_ALGORITHM = { name: "ECDSA", namedCurve: "P-256" };
 const SIGNATURE_ALGORITHM = { name: "ECDSA", hash: { name: "SHA-256" } };
-const KEYSTORE_VERSION = "2.0-ecdsa"; // Version to indicate ECDSA usage
+const KEYSTORE_VERSION = "2.1-ecdsa-progress"; // Version to indicate ECDSA and progress data
 
 const SESSION_STORAGE_KEY = 'pythonQuestAuth';
 
@@ -35,15 +35,41 @@ const SESSION_STORAGE_KEY = 'pythonQuestAuth';
 
 export type AuthMode = 'unauthenticated' | 'guest' | 'keystore';
 
+/**
+ * @interface ProgressData
+ * @description Defines the structure for storing user's learning progress.
+ */
+export interface ProgressData {
+  completedLessons: string[]; // Array of completed lesson IDs
+  xp: number;
+  level: number;
+}
+
+/**
+ * @interface KeystoreCryptoData
+ * @description Stores the cryptographic parts of a loaded keystore, needed for re-saving.
+ */
+interface KeystoreCryptoData {
+  encryptedPrivateKey: string;
+  salt: string;
+  iv: string;
+  pbkdf2Iterations: number;
+  keyAlgorithm: string;
+  encryptionAlgorithm: string;
+}
+
 export interface Keystore {
-  publicKeyHex: string;         // User's public key (ECDSA P-256, SPKI format), hex encoded
-  encryptedPrivateKey: string;  // User's private key (ECDSA P-256, PKCS8 format), AES-GCM encrypted, base64 encoded
-  salt: string;                 // Salt used for PBKDF2 key derivation, base64 encoded
-  iv: string;                   // Initialization Vector used for AES-GCM, base64 encoded
-  version: string;              // Keystore version (e.g., "2.0-ecdsa")
-  keyAlgorithm: string;         // e.g., "ECDSA-P256"
-  encryptionAlgorithm: string;  // e.g., "AES-GCM-256"
-  pbkdf2Iterations: number;     // Iterations for PBKDF2
+  publicKeyHex: string;
+  version: string;
+  // Crypto parts
+  encryptedPrivateKey: string;
+  salt: string;
+  iv: string;
+  pbkdf2Iterations: number;
+  keyAlgorithm: string;
+  encryptionAlgorithm: string;
+  // Progress data
+  progressData?: ProgressData; // Optional for backward compatibility with older keystores
 }
 
 export interface AuthUser {
@@ -55,14 +81,16 @@ interface AuthContextType {
   currentUser: AuthUser | null;
   isLoading: boolean;
   error: string | null;
-  setError: (message: string | null) => void; // Added setError
+  setError: (message: string | null) => void;
   isAuthenticated: boolean;
   isGuest: boolean;
-  createAccount: (password: string) => Promise<void>;
+  initialProgressFromKeystore: ProgressData | null; // To pass to ProgressContext on login
+  createAccount: (password: string, initialProgress?: ProgressData) => Promise<void>;
   loginWithKeystore: (keystoreFile: File, password: string) => Promise<void>;
   logout: () => void;
   switchToGuestMode: () => void;
   signData: (data: string) => Promise<string | null>;
+  saveProgressToKeystore: (currentProgress: ProgressData) => Promise<void>;
 }
 
 // Helper to convert ArrayBuffer to Base64 string
@@ -102,6 +130,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionPrivateKey, setSessionPrivateKey] = useState<CryptoKey | null>(null);
+  // Store crypto parts of the loaded keystore for re-saving with updated progress
+  const [currentKeystoreCryptoData, setCurrentKeystoreCryptoData] = useState<KeystoreCryptoData | null>(null);
+  // Used to pass progress data from keystore to ProgressContext upon login
+  const [initialProgressFromKeystore, setInitialProgressFromKeystore] = useState<ProgressData | null>(null);
+
 
   useEffect(() => {
     setIsLoading(true);
@@ -109,11 +142,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     try {
       const storedAuth = sessionStorage.getItem(SESSION_STORAGE_KEY);
       if (storedAuth) {
-        const { mode, user } = JSON.parse(storedAuth);
+        const { mode, user, keystoreCrypto } = JSON.parse(storedAuth);
         if (mode === 'keystore' && user && user.publicKeyHex) {
           setAuthMode('keystore');
           setCurrentUser(user);
-          console.debug("[AuthContext] Keystore session restored (publicKey only).");
+          if (keystoreCrypto) { // Restore crypto data if available
+            setCurrentKeystoreCryptoData(keystoreCrypto);
+          }
+          console.debug("[AuthContext] Keystore session restored (publicKey and cryptoData).");
         } else if (mode === 'guest') {
           setAuthMode('guest');
           console.debug("[AuthContext] Guest session restored.");
@@ -134,12 +170,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     if (!isLoading) {
-      console.debug("[AuthContext] Persisting auth state to session storage:", { authMode, currentUser });
+      console.debug("[AuthContext] Persisting auth state to session storage:", { authMode, currentUser, currentKeystoreCryptoData });
       try {
-        if (authMode === 'keystore' && currentUser) {
-          sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ mode: authMode, user: currentUser }));
+        if (authMode === 'keystore' && currentUser && currentKeystoreCryptoData) {
+          sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ mode: authMode, user: currentUser, keystoreCrypto: currentKeystoreCryptoData }));
         } else if (authMode === 'guest') {
-          sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ mode: authMode, user: null }));
+          sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ mode: authMode, user: null, keystoreCrypto: null }));
         } else {
           sessionStorage.removeItem(SESSION_STORAGE_KEY);
         }
@@ -147,7 +183,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         console.error("[AuthContext] Error persisting auth state:", e);
       }
     }
-  }, [authMode, currentUser, isLoading]);
+  }, [authMode, currentUser, isLoading, currentKeystoreCryptoData]);
 
   const generateEcdsaKeyPair = async (): Promise<CryptoKeyPair> => {
     console.debug("[AuthContext] Generating ECDSA P-256 key pair...");
@@ -184,7 +220,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         },
         masterKey,
         { name: KEYSTORE_ENCRYPTION_ALGORITHM_NAME, length: KEYSTORE_KEY_LENGTH },
-        true, // extractable for debugging, should be false for derived keys if not re-exported
+        true, 
         ['encrypt', 'decrypt']
       );
       console.debug("[AuthContext] Encryption key derived successfully.");
@@ -223,7 +259,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return decrypted;
     } catch (e) {
       console.error("[AuthContext] Error decrypting private key (likely wrong password or corrupted data):", e);
-      throw e; // Rethrow to be caught by login/create logic
+      throw e; 
     }
   };
 
@@ -258,7 +294,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           'pkcs8',
           keyDataPkcs8,
           ASYMMETRIC_KEY_ALGORITHM,
-          true, // extractable (can be false if not re-exported)
+          true, 
           ['sign']
       );
       console.debug("[AuthContext] ECDSA private key imported successfully.");
@@ -269,10 +305,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  const createAccount = useCallback(async (password: string): Promise<void> => {
+  const createAccount = useCallback(async (password: string, initialProgress?: ProgressData): Promise<void> => {
     setIsLoading(true);
     setError(null);
-    console.debug("[AuthContext] Starting account creation...");
+    setInitialProgressFromKeystore(null);
+    console.debug("[AuthContext] Starting account creation with initial progress:", initialProgress);
     try {
       const keyPair = await generateEcdsaKeyPair();
       if (!keyPair.publicKey || !keyPair.privateKey) {
@@ -280,7 +317,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       const publicKeySpki = await exportPublicKeySpki(keyPair.publicKey);
       const privateKeyPkcs8 = await exportPrivateKeyPkcs8(keyPair.privateKey);
-
       const publicKeyHex = arrayBufferToHex(publicKeySpki);
 
       const salt = window.crypto.getRandomValues(new Uint8Array(16));
@@ -289,15 +325,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const derivedKey = await deriveKeyFromPassword(password, salt);
       const encryptedPrivateKeyArrBuffer = await encryptPrivateKey(derivedKey, privateKeyPkcs8, iv);
       
-      const keystoreData: Keystore = {
-        publicKeyHex,
+      const cryptoData: KeystoreCryptoData = {
         encryptedPrivateKey: arrayBufferToBase64(encryptedPrivateKeyArrBuffer),
         salt: arrayBufferToBase64(salt),
         iv: arrayBufferToBase64(iv),
-        version: KEYSTORE_VERSION,
+        pbkdf2Iterations: PBKDF2_ITERATIONS,
         keyAlgorithm: "ECDSA-P256",
         encryptionAlgorithm: `${KEYSTORE_ENCRYPTION_ALGORITHM_NAME}-${KEYSTORE_KEY_LENGTH}`,
-        pbkdf2Iterations: PBKDF2_ITERATIONS,
+      };
+
+      const defaultProgress: ProgressData = { completedLessons: [], xp: 0, level: 1 };
+      const progressToSave = initialProgress || defaultProgress;
+
+      const keystoreData: Keystore = {
+        publicKeyHex,
+        version: KEYSTORE_VERSION,
+        ...cryptoData,
+        progressData: progressToSave,
       };
 
       const keystoreString = JSON.stringify(keystoreData, null, 2);
@@ -305,7 +349,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `PythonQuest_Keystore_ECDSA_${publicKeyHex.substring(0, 8)}.json`;
+      a.download = `PythonQuest_Keystore_${KEYSTORE_VERSION}_${publicKeyHex.substring(0, 8)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -316,7 +360,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setCurrentUser(user);
       setAuthMode('keystore');
       setSessionPrivateKey(keyPair.privateKey);
-      console.info("[AuthContext] Account created successfully. User is now keystore authenticated.");
+      setCurrentKeystoreCryptoData(cryptoData); // Store crypto parts for re-saving
+      setInitialProgressFromKeystore(progressToSave); // Signal ProgressContext to load this
+      console.info("[AuthContext] Account created successfully. User is keystore authenticated.");
 
     } catch (e: any) {
       console.error("[AuthContext] Error creating account:", e, e.stack);
@@ -324,6 +370,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setAuthMode('unauthenticated');
       setCurrentUser(null);
       setSessionPrivateKey(null);
+      setCurrentKeystoreCryptoData(null);
     } finally {
       setIsLoading(false);
     }
@@ -332,6 +379,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const loginWithKeystore = useCallback(async (keystoreFile: File, password: string): Promise<void> => {
     setIsLoading(true);
     setError(null);
+    setInitialProgressFromKeystore(null);
     console.debug("[AuthContext] Starting login with keystore...");
     try {
       const keystoreString = await keystoreFile.text();
@@ -339,7 +387,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (keystoreData.version !== KEYSTORE_VERSION || keystoreData.keyAlgorithm !== "ECDSA-P256") {
         console.warn("[AuthContext] Keystore version or algorithm mismatch.", keystoreData);
-        throw new Error("Invalid or outdated keystore file. Please use a keystore generated with ECDSA P-256.");
+        throw new Error(`Invalid keystore. Expected version ${KEYSTORE_VERSION} with ECDSA-P256.`);
       }
       if (!keystoreData.publicKeyHex || !keystoreData.encryptedPrivateKey || !keystoreData.salt || !keystoreData.iv) {
         throw new Error("Invalid or corrupted keystore file format.");
@@ -361,7 +409,20 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setCurrentUser(user);
       setAuthMode('keystore');
       setSessionPrivateKey(privateKey);
-      console.info("[AuthContext] Login successful. User is now keystore authenticated.");
+      
+      const cryptoData: KeystoreCryptoData = {
+        encryptedPrivateKey: keystoreData.encryptedPrivateKey,
+        salt: keystoreData.salt,
+        iv: keystoreData.iv,
+        pbkdf2Iterations: keystoreData.pbkdf2Iterations,
+        keyAlgorithm: keystoreData.keyAlgorithm,
+        encryptionAlgorithm: keystoreData.encryptionAlgorithm,
+      };
+      setCurrentKeystoreCryptoData(cryptoData);
+
+      const progressToLoad = keystoreData.progressData || { completedLessons: [], xp: 0, level: 1 };
+      setInitialProgressFromKeystore(progressToLoad); // Signal ProgressContext
+      console.info("[AuthContext] Login successful. User is keystore authenticated. Progress from keystore:", progressToLoad);
 
     } catch (e: any) {
       console.error("[AuthContext] Error logging in with keystore:", e, e.stack);
@@ -373,16 +434,65 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setAuthMode('unauthenticated');
       setCurrentUser(null);
       setSessionPrivateKey(null);
+      setCurrentKeystoreCryptoData(null);
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  const saveProgressToKeystore = useCallback(async (currentProgress: ProgressData): Promise<void> => {
+    if (authMode !== 'keystore' || !currentUser || !currentKeystoreCryptoData || !sessionPrivateKey) {
+      setError("Cannot save progress: Not authenticated with a keystore or essential data missing.");
+      console.warn("[AuthContext] Save progress aborted: Not in keystore mode or missing data.");
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    console.debug("[AuthContext] Saving progress to keystore...");
+
+    try {
+      // We use the existing encrypted private key, salt, IV. No re-encryption of private key needed.
+      const keystoreData: Keystore = {
+        publicKeyHex: currentUser.publicKeyHex,
+        version: KEYSTORE_VERSION,
+        encryptedPrivateKey: currentKeystoreCryptoData.encryptedPrivateKey,
+        salt: currentKeystoreCryptoData.salt,
+        iv: currentKeystoreCryptoData.iv,
+        pbkdf2Iterations: currentKeystoreCryptoData.pbkdf2Iterations,
+        keyAlgorithm: currentKeystoreCryptoData.keyAlgorithm,
+        encryptionAlgorithm: currentKeystoreCryptoData.encryptionAlgorithm,
+        progressData: currentProgress,
+      };
+
+      const keystoreString = JSON.stringify(keystoreData, null, 2);
+      const blob = new Blob([keystoreString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PythonQuest_Keystore_${KEYSTORE_VERSION}_${currentUser.publicKeyHex.substring(0, 8)}_updated.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      console.info("[AuthContext] Updated keystore file with progress downloaded.");
+      // Optionally, provide user feedback like a toast notification.
+
+    } catch (e: any) {
+      console.error("[AuthContext] Error saving progress to keystore:", e, e.stack);
+      setError(`Failed to save progress: ${e.message || 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [authMode, currentUser, currentKeystoreCryptoData, sessionPrivateKey]);
+
 
   const logout = useCallback((): void => {
     console.debug("[AuthContext] Logging out...");
     setAuthMode('unauthenticated');
     setCurrentUser(null);
     setSessionPrivateKey(null);
+    setCurrentKeystoreCryptoData(null);
+    setInitialProgressFromKeystore(null);
     setError(null);
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
     console.info("[AuthContext] User logged out.");
@@ -390,9 +500,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const switchToGuestMode = useCallback((): void => {
     console.debug("[AuthContext] Switching to guest mode...");
-    if (authMode === 'keystore') {
+    if (authMode === 'keystore') { // Clear keystore specific states if switching from keystore
         setCurrentUser(null);
         setSessionPrivateKey(null);
+        setCurrentKeystoreCryptoData(null);
+        setInitialProgressFromKeystore(null); 
     }
     setAuthMode('guest');
     setError(null);
@@ -429,14 +541,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     currentUser,
     isLoading,
     error,
-    setError, // Expose setError
+    setError, 
     isAuthenticated: authMode === 'keystore' && !!currentUser,
     isGuest: authMode === 'guest',
+    initialProgressFromKeystore,
     createAccount,
     loginWithKeystore,
     logout,
     switchToGuestMode,
     signData,
+    saveProgressToKeystore,
   };
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
