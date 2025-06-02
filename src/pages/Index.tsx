@@ -1,26 +1,27 @@
 /**
  * @file Index.tsx
- * @version 1.2.0
- * @description Main dashboard page for Python Quest.
- * This component orchestrates the display of the curriculum, including chapters and lessons,
- * manages user navigation to individual lesson views, and showcases overall progress.
- * It leverages context for progress tracking and theme management, providing a seamless
- * and gamified learning experience.
+ * @version 1.3.0
+ * @description Main entry point for Python Quest, handling authentication routing and dashboard display.
+ * This component now orchestrates the display of either the LoginPage or the main Dashboard
+ * based on the user's authentication state. It integrates the new AuthContext for
+ * self-custody keystore authentication and guest mode.
  *
  * @project Python Quest - A Gamified Python Learning Platform
  * @author Factory AI Development Team
- * @date May 31, 2025
+ * @date June 2, 2025
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Code, Gamepad2, Zap, Heart, ChevronDown, Lock } from 'lucide-react';
+import { Code, Gamepad2, Zap, Heart, ChevronDown, Lock, UserPlus, LogOut, ShieldAlert, KeyRound, Loader2 } from 'lucide-react';
 import LessonCard from '@/components/LessonCard';
 import ProgressBar from '@/components/ProgressBar';
 import ThemeToggle from '@/components/ThemeToggle';
 import LessonView from '@/pages/LessonView';
+import LoginPage from '@/components/LoginPage'; // Import the LoginPage
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ProgressProvider, useProgress } from '@/contexts/ProgressContext';
-import { lessons as allLessonsData, chapters as allChaptersData, Lesson, Chapter } from '@/data/lessons'; // Renamed for clarity
+import { AuthProvider, useAuth, AuthMode } from '@/contexts/AuthContext'; // Import Auth context and hook
+import { lessons as allLessonsData, chapters as allChaptersData, Lesson } from '@/data/lessons';
 import { Button } from '@/components/ui/button';
 import {
   Accordion,
@@ -28,48 +29,42 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-// Define a constant for the total number of lessons, derived from the curriculum data.
-// This ensures accuracy if the number of lessons changes in `lessons.ts`.
+
 const TOTAL_LESSONS = allLessonsData.length;
 
 /**
  * @component Dashboard
  * @description The core UI component for the main learning dashboard.
- * It displays chapters and lessons, handles lesson selection, and shows user progress.
- * This component is responsible for the primary user interface where learners interact with the curriculum.
- *
- * Key functionalities:
- * - Renders the main header with the application title and theme toggle.
- * - Displays the user's overall progress bar.
- * - Presents a hero section with a motivational message and key platform features.
- * - Organizes lessons into chapters using an accordion interface.
- * - Implements logic for locking/unlocking chapters and lessons based on user progress.
- * - Navigates to the `LessonView` component when a lesson is selected.
- * - Shows user statistics like completed lessons, XP earned, and current level.
- * - Includes a section for supporting the platform.
- *
- * @returns {JSX.Element} The rendered dashboard.
+ * Displays chapters, lessons, user progress, and auth-specific header elements.
  */
 const Dashboard: React.FC = () => {
-  // State to manage the currently selected lesson ID. If null, the dashboard is shown.
   const [selectedLesson, setSelectedLesson] = useState<string | null>(null);
-
-  // Access progress data and functions from the ProgressContext.
   const { completedLessons, xp, level, getChapterProgress, isLessonCompleted } = useProgress();
-
-  // State to manage which accordion item (chapter) is currently open.
-  // Defaults to the first chapter being open.
+  const { authMode, currentUser, logout, createAccount: upgradeToKeystoreAccount, isLoading: isAuthLoading } = useAuth();
+  
   const [activeAccordionItem, setActiveAccordionItem] = useState<string | undefined>(
     allChaptersData.length > 0 ? `chapter-${allChaptersData[0].id}` : undefined
   );
 
-  /**
-   * @memoizedValue lessonsByChapter
-   * @description Groups all lessons by their `chapterId` for efficient rendering and access.
-   * This is memoized to prevent re-computation on every render unless `allLessonsData` changes.
-   * @returns {Object.<number, Lesson[]>} A dictionary where keys are chapter IDs and values are arrays of lessons.
-   */
+  // State for guest-to-keystore upgrade modal
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [upgradePassword, setUpgradePassword] = useState('');
+  const [upgradeConfirmPassword, setUpgradeConfirmPassword] = useState('');
+  const [upgradeError, setUpgradeError] = useState<string | null>(null);
+
+
   const lessonsByChapter = useMemo(() => {
     const grouped: { [key: number]: Lesson[] } = {};
     allLessonsData.forEach(lesson => {
@@ -79,46 +74,23 @@ const Dashboard: React.FC = () => {
       grouped[lesson.chapterId].push(lesson);
     });
     return grouped;
-  }, []); // Dependency: allLessonsData (if it were dynamic, it would be listed here)
+  }, []);
 
-  /**
-   * @function isChapterLocked
-   * @description Determines if a chapter should be locked based on the completion of the previous chapter.
-   * The first chapter is always unlocked. Subsequent chapters unlock if all lessons
-   * in the *immediately preceding* chapter are completed.
-   * @param {number} chapterId - The ID of the chapter to check.
-   * @returns {boolean} True if the chapter is locked, false otherwise.
-   */
   const isChapterLocked = (chapterId: number): boolean => {
-    if (chapterId === 1) return false; // Chapter 1 is never locked.
-
+    if (chapterId === 1) return false;
     const previousChapterId = chapterId - 1;
     const prevChapterData = allChaptersData.find(ch => ch.id === previousChapterId);
-
-    // If the previous chapter doesn't exist (e.g., misconfigured chapter IDs), treat current as locked.
-    if (!prevChapterData) return true; 
-
+    if (!prevChapterData) return true;
     const prevChapterLessons = lessonsByChapter[previousChapterId] || [];
-
-    // If the previous chapter has no lessons defined, it cannot be "completed".
-    // In this specific logic, if a preceding chapter has no lessons, subsequent chapters are locked.
-    // This encourages defining lessons for all preceding chapters.
-    if (prevChapterLessons.length === 0) return true; 
-
-    // A chapter is locked if NOT ALL lessons in the previous chapter are completed.
+    if (prevChapterLessons.length === 0) return true;
     return !prevChapterLessons.every(lesson => isLessonCompleted(lesson.id));
   };
 
-  // Effect to handle accordion behavior when a locked chapter is clicked.
-  // If a user tries to open a locked chapter, this keeps the accordion closed
-  // or reverts to the previously open, unlocked chapter.
   useEffect(() => {
     if (activeAccordionItem) {
       const chapterIdStr = activeAccordionItem.replace('chapter-', '');
       const chapterIdNum = parseInt(chapterIdStr, 10);
       if (!isNaN(chapterIdNum) && isChapterLocked(chapterIdNum)) {
-        // If the currently active item is locked, find the first unlocked chapter and open it.
-        // Or, if none are unlocked (besides chapter 1), default to chapter 1 or undefined.
         const firstUnlockedChapter = allChaptersData.find(ch => !isChapterLocked(ch.id));
         setActiveAccordionItem(firstUnlockedChapter ? `chapter-${firstUnlockedChapter.id}` : undefined);
       }
@@ -126,65 +98,107 @@ const Dashboard: React.FC = () => {
   }, [activeAccordionItem, isChapterLocked, allChaptersData]);
 
 
-  // Conditional rendering: If a lesson is selected, render the LessonView.
-  // Otherwise, render the main dashboard.
-  if (selectedLesson) {
-    // Find the details of the selected lesson to pass to LessonView.
-    const lessonDetail = allLessonsData.find(l => l.id === selectedLesson);
-
-    // Error handling: If the selected lesson ID doesn't correspond to any known lesson.
-    // This could happen due to URL manipulation or data inconsistency.
-    if (!lessonDetail) {
-        // Log an error for developers and reset selection to prevent a broken state.
-        console.error(`Error: Lesson with ID "${selectedLesson}" not found. Returning to dashboard.`);
-        setSelectedLesson(null); 
-        // Display a user-friendly error message.
-        return <div className="p-8 text-center text-red-500 text-lg">Error: The requested lesson could not be found. Please try again.</div>;
+  const handleUpgradeAccountSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUpgradeError(null);
+    if (upgradePassword !== upgradeConfirmPassword) {
+      setUpgradeError("Passwords do not match.");
+      return;
     }
-    // Render the LessonView component, passing necessary props for lesson display and navigation.
+    if (upgradePassword.length < 8) {
+      setUpgradeError("Password must be at least 8 characters long.");
+      return;
+    }
+    try {
+      await upgradeToKeystoreAccount(upgradePassword); // This will create account and download keystore
+      setIsUpgradeModalOpen(false); // Close modal on success
+      setUpgradePassword('');
+      setUpgradeConfirmPassword('');
+      // AuthContext handles mode change; progress is preserved via localStorage.
+    } catch (err: any) {
+      setUpgradeError(err.message || "Failed to create account.");
+    }
+  };
+
+
+  if (selectedLesson) {
+    const lessonDetail = allLessonsData.find(l => l.id === selectedLesson);
+    if (!lessonDetail) {
+      console.error(`Error: Lesson with ID "${selectedLesson}" not found. Returning to dashboard.`);
+      setSelectedLesson(null);
+      return <div className="p-8 text-center text-red-500 text-lg">Error: The requested lesson could not be found. Please try again.</div>;
+    }
     return (
       <LessonView
         lessonId={selectedLesson}
         chapterId={lessonDetail.chapterId}
-        onBack={() => setSelectedLesson(null)} // Callback to return to the dashboard
-        setSelectedLesson={setSelectedLesson}   // Callback for next/prev lesson navigation within LessonView
+        onBack={() => setSelectedLesson(null)}
+        setSelectedLesson={setSelectedLesson}
       />
     );
   }
 
-  // Main dashboard layout
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-      {/* Header Section: Contains application title and theme toggle. Sticky for easy access. */}
       <header className="border-b border-cyan-500/30 bg-gray-900/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4">
+        <div className="container mx-auto px-4 py-3"> {/* Reduced padding for header */}
           <div className="flex items-center justify-between">
-            {/* Logo and Application Title */}
             <div className="flex items-center gap-3">
               <div className="p-2 bg-gradient-to-r from-cyan-500 to-green-500 rounded-lg">
-                <Code className="h-6 w-6 text-white" /> {/* Icon representing coding */}
+                <Code className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-green-400 bg-clip-text text-transparent">
+                <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-cyan-400 to-green-400 bg-clip-text text-transparent">
                   Python Quest
                 </h1>
-                <p className="text-sm text-gray-400">Level up your coding skills</p>
+                <p className="text-xs md:text-sm text-gray-400">Level up your coding skills</p>
               </div>
             </div>
-            {/* Theme Toggle Component */}
-            <ThemeToggle />
+            <div className="flex items-center gap-3">
+              {authMode === 'guest' && (
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="border-green-500 text-green-400 hover:bg-green-500/10 hover:text-green-300"
+                  onClick={() => setIsUpgradeModalOpen(true)}
+                >
+                  <UserPlus className="h-4 w-4 mr-1 md:mr-2" /> Create Account
+                </Button>
+              )}
+              {authMode === 'keystore' && currentUser && (
+                <>
+                  <span className="text-xs text-gray-400 hidden md:inline">
+                    ID: {currentUser.publicKeyHex.substring(0, 6)}...{currentUser.publicKeyHex.slice(-4)}
+                  </span>
+                  <Button size="sm" variant="outline" onClick={logout} className="border-red-500 text-red-400 hover:bg-red-500/10 hover:text-red-300">
+                    <LogOut className="h-4 w-4 mr-1 md:mr-2" /> Logout
+                  </Button>
+                </>
+              )}
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {authMode === 'guest' && (
+         <Alert className="container mx-auto mt-4 max-w-3xl bg-purple-900/30 border-purple-500/50 text-purple-300">
+            <ShieldAlert className="h-5 w-5 text-purple-400" />
+            <AlertTitle className="font-semibold text-purple-300">You are in Guest Mode!</AlertTitle>
+            <AlertDescription className="text-sm text-purple-400">
+              Your progress is saved locally in this browser. To secure your progress permanently and access it anywhere, 
+              <Button variant="link" className="p-0 h-auto text-green-400 hover:text-green-300 underline ml-1" onClick={() => setIsUpgradeModalOpen(true)}>
+                create a free Keystore Account
+              </Button>.
+            </AlertDescription>
+          </Alert>
+      )}
+
       <div className="container mx-auto px-4 py-8">
-        {/* Progress Bar Section: Displays overall user progress. */}
         <div className="mb-8">
-          <ProgressBar /> {/* ProgressBar component now uses getOverallProgress from context */}
+          <ProgressBar />
         </div>
 
-        {/* Hero Section: Motivational message and platform features. */}
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-cyan-400 to-green-400 bg-clip-text text-transparent">
             Master Python Programming
@@ -192,7 +206,6 @@ const Dashboard: React.FC = () => {
           <p className="text-xl text-gray-300 mb-6 max-w-2xl mx-auto">
             Learn Python through interactive lessons, hands-on coding challenges, and gamified progress tracking.
           </p>
-          {/* Feature Highlights: Uses icons for visual appeal. */}
           <div className="flex flex-wrap justify-center gap-x-8 gap-y-4 text-sm">
             <div className="flex items-center gap-2">
               <Gamepad2 className="h-5 w-5 text-cyan-400" />
@@ -204,87 +217,68 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-yellow-400" />
-              <span className="text-gray-300">Low Latency</span> {/* (PyScript execution) */}
+              <span className="text-gray-300">Low Latency</span>
             </div>
           </div>
         </div>
 
-        {/* Chapters Accordion Section: Displays the curriculum organized by chapters. */}
         <div className="mb-12">
           <Accordion 
-            type="single" // Allows only one accordion item to be open at a time
-            collapsible // Allows closing the currently open item
+            type="single" 
+            collapsible 
             className="w-full space-y-4"
-            value={activeAccordionItem} // Controlled component: current open item
-            onValueChange={setActiveAccordionItem} // Handler to update the open item state
+            value={activeAccordionItem}
+            onValueChange={setActiveAccordionItem}
           >
             {allChaptersData.map((chapter) => {
-              // Retrieve lessons for the current chapter.
               const chapterLessons = lessonsByChapter[chapter.id] || [];
-              // Get progress details for the current chapter.
               const chapterProgress = getChapterProgress(chapter.id);
-              // Determine if the current chapter is locked.
               const isCurrentChapterLocked = isChapterLocked(chapter.id);
 
               return (
                 <AccordionItem 
-                  value={`chapter-${chapter.id}`} // Unique value for each accordion item
+                  value={`chapter-${chapter.id}`} 
                   key={chapter.id}
                   className="bg-gray-800/70 border border-cyan-500/30 rounded-lg overflow-hidden"
                 >
-                  {/* Accordion Trigger: Clickable header to expand/collapse chapter content. */}
                   <AccordionTrigger 
                     className={`px-6 py-4 hover:bg-cyan-500/10 transition-colors duration-200 ${isCurrentChapterLocked ? 'cursor-not-allowed opacity-70' : ''}`}
-                    disabled={isCurrentChapterLocked} // Disable trigger if chapter is locked
-                    // Custom click handler to manage accordion state for locked chapters
-                    // and allow toggling of unlocked chapters.
+                    disabled={isCurrentChapterLocked}
                     onClick={() => {
                       if (!isCurrentChapterLocked) {
                         setActiveAccordionItem(prevItem => 
                           prevItem === `chapter-${chapter.id}` ? undefined : `chapter-${chapter.id}`
                         );
                       }
-                      // If locked, the `disabled` prop should prevent interaction, but this is a fallback.
                     }}
                   >
                     <div className="flex items-center justify-between w-full">
-                      {/* Chapter Title and Description */}
                       <div className="text-left">
                         <h3 className={`text-xl font-semibold ${isCurrentChapterLocked ? 'text-gray-500' : 'text-cyan-400'}`}>
                           Chapter {chapter.id}: {chapter.title}
                         </h3>
                         <p className={`text-sm ${isCurrentChapterLocked ? 'text-gray-600' : 'text-gray-400'}`}>{chapter.description}</p>
                       </div>
-                      {/* Chapter Status Icons and Progress */}
                       <div className="flex items-center gap-3">
                         {isCurrentChapterLocked && <Lock className="h-5 w-5 text-gray-500" />}
-                        {!isCurrentChapterLocked && chapterLessons.length > 0 && ( // Only show progress if not locked and has lessons
+                        {!isCurrentChapterLocked && chapterLessons.length > 0 && (
                           <span className="text-xs text-gray-300">
                             {chapterProgress.completed}/{chapterProgress.total} Lessons
                           </span>
                         )}
-                        {/* Chevron icon indicates open/closed state of accordion. */}
                         <ChevronDown 
                           className={`h-5 w-5 transition-transform duration-200 ${activeAccordionItem === `chapter-${chapter.id}` && !isCurrentChapterLocked ? 'rotate-180' : ''} ${isCurrentChapterLocked ? 'text-gray-600' : 'text-cyan-400'}`} 
                         />
                       </div>
                     </div>
                   </AccordionTrigger>
-                  {/* Accordion Content: Contains the list of lessons for the chapter. */}
                   <AccordionContent className="px-6 py-6 border-t border-cyan-500/20 bg-gray-900/30">
                     {isCurrentChapterLocked ? (
-                      // Message displayed if the chapter is locked.
                       <p className="text-gray-500 text-center">Complete previous chapters to unlock.</p>
                     ) : chapterLessons.length > 0 ? (
-                      // Grid layout for lesson cards. Responsive columns.
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {chapterLessons.map((lesson, index) => {
-                          // Individual Lesson Locking Logic:
-                          // A lesson is locked if it's not the first lesson in its chapter
-                          // AND the immediately preceding lesson in the SAME chapter is not completed.
-                          // This ensures sequential progression within a chapter.
                           const individualLessonIsLocked = index > 0 && !isLessonCompleted(chapterLessons[index - 1].id);
-                          
                           return (
                             <LessonCard
                               key={lesson.id}
@@ -292,14 +286,13 @@ const Dashboard: React.FC = () => {
                               title={lesson.title}
                               description={lesson.description}
                               difficulty={lesson.difficulty}
-                              isLocked={individualLessonIsLocked} // Pass lock status to LessonCard
-                              onClick={() => setSelectedLesson(lesson.id)} // Set selected lesson on click
+                              isLocked={individualLessonIsLocked}
+                              onClick={() => setSelectedLesson(lesson.id)}
                             />
                           );
                         })}
                       </div>
                     ) : (
-                      // Message displayed if an unlocked chapter has no lessons defined yet.
                       <p className="text-gray-400 text-center">Lessons for this chapter are coming soon!</p>
                     )}
                   </AccordionContent>
@@ -309,26 +302,21 @@ const Dashboard: React.FC = () => {
           </Accordion>
         </div>
 
-        {/* User Statistics Section: Displays key gamification metrics. */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
-          {/* Lessons Completed Stat */}
           <div className="bg-gradient-to-br from-cyan-900/50 to-blue-900/50 border border-cyan-500/30 rounded-lg p-6 text-center">
             <div className="text-3xl font-bold text-cyan-400 mb-2">{completedLessons.size}/{TOTAL_LESSONS}</div>
             <div className="text-gray-300">Lessons Completed</div>
           </div>
-          {/* XP Earned Stat */}
           <div className="bg-gradient-to-br from-green-900/50 to-emerald-900/50 border border-green-500/30 rounded-lg p-6 text-center">
             <div className="text-3xl font-bold text-green-400 mb-2">{xp}</div>
             <div className="text-gray-300">XP Earned</div>
           </div>
-          {/* Current Level Stat */}
           <div className="bg-gradient-to-br from-yellow-900/50 to-orange-900/50 border border-yellow-500/30 rounded-lg p-6 text-center">
             <div className="text-3xl font-bold text-yellow-400 mb-2">{level}</div>
             <div className="text-gray-300">Current Level</div>
           </div>
         </div>
 
-        {/* Donations/Support Section: A call to action for supporting the platform. */}
         <div className="mt-16 text-center">
           <div className="bg-gradient-to-r from-purple-900/50 to-pink-900/50 border border-purple-500/30 rounded-lg p-8 max-w-md mx-auto">
             <Heart className="h-8 w-8 text-pink-400 mx-auto mb-4" />
@@ -336,7 +324,6 @@ const Dashboard: React.FC = () => {
             <p className="text-gray-300 mb-4 text-sm">
               Help us keep this platform free and continue adding new lessons and features!
             </p>
-            {/* Button links to an external donation page. */}
             <Button
               onClick={() => window.open('https://pay.zaprite.com/pl_iT3k7W4JRo', '_blank')}
               className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold px-6 py-2"
@@ -347,26 +334,103 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal for Guest to Keystore Upgrade */}
+      <Dialog open={isUpgradeModalOpen} onOpenChange={setIsUpgradeModalOpen}>
+        <DialogContent className="bg-gray-800 border-green-500/50 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-2xl text-green-400 flex items-center">
+              <KeyRound className="mr-2" /> Secure Your Progress
+            </DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Create a self-custody keystore account to save your current progress permanently. Choose a strong password.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleUpgradeAccountSubmit} className="space-y-4 pt-4">
+            <div>
+              <label htmlFor="upgradePassword" className="text-sm font-medium text-gray-300">New Password</label>
+              <Input
+                id="upgradePassword"
+                type="password"
+                value={upgradePassword}
+                onChange={(e) => setUpgradePassword(e.target.value)}
+                placeholder="Min. 8 characters"
+                className="mt-1 bg-gray-700 border-gray-600 text-white placeholder-gray-500"
+                disabled={isAuthLoading}
+              />
+            </div>
+            <div>
+              <label htmlFor="upgradeConfirmPassword" className="text-sm font-medium text-gray-300">Confirm Password</label>
+              <Input
+                id="upgradeConfirmPassword"
+                type="password"
+                value={upgradeConfirmPassword}
+                onChange={(e) => setUpgradeConfirmPassword(e.target.value)}
+                placeholder="Confirm your new password"
+                className="mt-1 bg-gray-700 border-gray-600 text-white placeholder-gray-500"
+                disabled={isAuthLoading}
+              />
+            </div>
+            {upgradeError && <p className="text-sm text-red-400 flex items-center"><ShieldAlert size={16} className="mr-1" />{upgradeError}</p>}
+            <DialogFooter className="sm:justify-start pt-2">
+              <Button type="submit" className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white" disabled={isAuthLoading}>
+                {isAuthLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                Create Account & Download Keystore
+              </Button>
+              <DialogClose asChild>
+                <Button type="button" variant="outline" className="w-full mt-2 sm:mt-0 border-gray-600 text-gray-300 hover:bg-gray-700" disabled={isAuthLoading}>
+                  Cancel
+                </Button>
+              </DialogClose>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
 /**
+ * @component AppContentRouter
+ * @description Handles routing based on authentication state.
+ * Renders LoginPage if unauthenticated, otherwise renders the DashboardWrapper.
+ */
+const AppContentRouter: React.FC = () => {
+  const { authMode, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+        <Loader2 className="h-12 w-12 animate-spin text-cyan-400" />
+      </div>
+    );
+  }
+
+  if (authMode === 'unauthenticated') {
+    return <LoginPage />;
+  }
+
+  // If guest or keystore, show the main dashboard content
+  // ProgressProvider is specific to the learning content, so it wraps the Dashboard
+  return (
+    <ProgressProvider>
+      <Dashboard />
+    </ProgressProvider>
+  );
+};
+
+/**
  * @component Index
- * @description Root component for the dashboard page.
- * It wraps the `Dashboard` component with necessary context providers (`ThemeProvider` and `ProgressProvider`)
- * to ensure that theme and progress state are available throughout the application.
- * @returns {JSX.Element} The Dashboard component wrapped with context providers.
+ * @description Root component for the Python Quest application.
+ * Sets up all necessary context providers (Auth, Theme) and renders the AppContentRouter.
  */
 const Index: React.FC = () => {
   return (
-    // ThemeProvider manages dark/light mode.
-    <ThemeProvider>
-      {/* ProgressProvider manages all user progress data (lessons, XP, levels). */}
-      <ProgressProvider>
-        <Dashboard />
-      </ProgressProvider>
-    </ThemeProvider>
+    <AuthProvider>
+      <ThemeProvider defaultTheme="dark" storageKey="python-quest-ui-theme">
+        <AppContentRouter />
+      </ThemeProvider>
+    </AuthProvider>
   );
 };
 
