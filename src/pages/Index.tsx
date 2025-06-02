@@ -19,7 +19,7 @@ import ThemeToggle from '@/components/ThemeToggle';
 import LessonView from '@/pages/LessonView';
 import LoginPage from '@/components/LoginPage'; // Import the LoginPage
 import { ThemeProvider } from '@/contexts/ThemeContext';
-import { ProgressProvider, useProgress } from '@/contexts/ProgressContext';
+import { ProgressProvider, useProgress } from '@/contexts/ProgressContext'; // Import useProgress
 import { AuthProvider, useAuth, AuthMode } from '@/contexts/AuthContext'; // Import Auth context and hook
 import { lessons as allLessonsData, chapters as allChaptersData, Lesson } from '@/data/lessons';
 import { Button } from '@/components/ui/button';
@@ -51,8 +51,8 @@ const TOTAL_LESSONS = allLessonsData.length;
  */
 const Dashboard: React.FC = () => {
   const [selectedLesson, setSelectedLesson] = useState<string | null>(null);
-  const { completedLessons, xp, level, getChapterProgress, isLessonCompleted } = useProgress();
-  const { authMode, currentUser, logout, createAccount: upgradeToKeystoreAccount, isLoading: isAuthLoading } = useAuth();
+  const { completedLessons, xp, level, getChapterProgress, isLessonCompleted, clearProgress } = useProgress(); // Get clearProgress
+  const { authMode, currentUser, logout: authLogout, createAccount: upgradeToKeystoreAccount, isLoading: isAuthLoading } = useAuth(); // Renamed logout to authLogout to avoid conflict
   
   const [activeAccordionItem, setActiveAccordionItem] = useState<string | undefined>(
     allChaptersData.length > 0 ? `chapter-${allChaptersData[0].id}` : undefined
@@ -110,14 +110,22 @@ const Dashboard: React.FC = () => {
       return;
     }
     try {
-      await upgradeToKeystoreAccount(upgradePassword); // This will create account and download keystore
-      setIsUpgradeModalOpen(false); // Close modal on success
+      // The AuthContext's createAccount should handle progress migration if needed.
+      // For now, it creates a new account; ProgressContext will load based on the new user.
+      // If guest progress needs to be explicitly moved, that logic belongs in AuthContext.createAccount.
+      await upgradeToKeystoreAccount(upgradePassword); 
+      setIsUpgradeModalOpen(false); 
       setUpgradePassword('');
       setUpgradeConfirmPassword('');
-      // AuthContext handles mode change; progress is preserved via localStorage.
     } catch (err: any) {
       setUpgradeError(err.message || "Failed to create account.");
     }
+  };
+
+  const handleLogout = () => {
+    console.debug("[Index.tsx] handleLogout called. Clearing progress then logging out.");
+    clearProgress(); // Clear progress specific to the current authMode (guest or keystore user)
+    authLogout();    // AuthContext logout will change authMode to 'unauthenticated'
   };
 
 
@@ -141,7 +149,7 @@ const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
       <header className="border-b border-cyan-500/30 bg-gray-900/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3"> {/* Reduced padding for header */}
+        <div className="container mx-auto px-4 py-3"> 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-gradient-to-r from-cyan-500 to-green-500 rounded-lg">
@@ -170,7 +178,7 @@ const Dashboard: React.FC = () => {
                   <span className="text-xs text-gray-400 hidden md:inline">
                     ID: {currentUser.publicKeyHex.substring(0, 6)}...{currentUser.publicKeyHex.slice(-4)}
                   </span>
-                  <Button size="sm" variant="outline" onClick={logout} className="border-red-500 text-red-400 hover:bg-red-500/10 hover:text-red-300">
+                  <Button size="sm" variant="outline" onClick={handleLogout} className="border-red-500 text-red-400 hover:bg-red-500/10 hover:text-red-300">
                     <LogOut className="h-4 w-4 mr-1 md:mr-2" /> Logout
                   </Button>
                 </>
@@ -186,7 +194,7 @@ const Dashboard: React.FC = () => {
             <ShieldAlert className="h-5 w-5 text-purple-400" />
             <AlertTitle className="font-semibold text-purple-300">You are in Guest Mode!</AlertTitle>
             <AlertDescription className="text-sm text-purple-400">
-              Your progress is saved locally in this browser. To secure your progress permanently and access it anywhere, 
+              Your progress is saved temporarily for this session. To secure your progress permanently and access it anywhere, 
               <Button variant="link" className="p-0 h-auto text-green-400 hover:text-green-300 underline ml-1" onClick={() => setIsUpgradeModalOpen(true)}>
                 create a free Keystore Account
               </Button>.
@@ -396,9 +404,11 @@ const Dashboard: React.FC = () => {
  * Renders LoginPage if unauthenticated, otherwise renders the DashboardWrapper.
  */
 const AppContentRouter: React.FC = () => {
-  const { authMode, isLoading } = useAuth();
+  const { authMode, isLoading: isAuthLoadingHook } = useAuth(); // Renamed isLoading to avoid conflict
+  const { isLoadingProgress } = useProgress();
 
-  if (isLoading) {
+
+  if (isAuthLoadingHook || isLoadingProgress) { // Check both auth and progress loading
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
         <Loader2 className="h-12 w-12 animate-spin text-cyan-400" />
@@ -411,12 +421,7 @@ const AppContentRouter: React.FC = () => {
   }
 
   // If guest or keystore, show the main dashboard content
-  // ProgressProvider is specific to the learning content, so it wraps the Dashboard
-  return (
-    <ProgressProvider>
-      <Dashboard />
-    </ProgressProvider>
-  );
+  return <Dashboard />;
 };
 
 /**
@@ -428,7 +433,10 @@ const Index: React.FC = () => {
   return (
     <AuthProvider>
       <ThemeProvider defaultTheme="dark" storageKey="python-quest-ui-theme">
-        <AppContentRouter />
+        {/* ProgressProvider must be INSIDE AuthProvider to access auth state */}
+        <ProgressProvider> 
+          <AppContentRouter />
+        </ProgressProvider>
       </ThemeProvider>
     </AuthProvider>
   );
