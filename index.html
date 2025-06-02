@@ -1,0 +1,24 @@
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Python Quest</title>
+    <link rel="stylesheet" href="https://pyscript.net/releases/2025.5.1/core.css">
+    <script type="module" src="https://pyscript.net/releases/2025.5.1/core.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="https://cdn.gpteng.co/gptengineer.js" type="module"></script>
+    <script type="module" src="./src/main.tsx"></script>
+    <script type="py" config="./pyscript.json">
+      # Global PyScript setup for code execution
+      from pyscript import document
+      import sys
+      import io
+      from contextlib import redirect_stdout, redirect_stderr
+    </script>
+  </body>
+</html>
