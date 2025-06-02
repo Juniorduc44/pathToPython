@@ -1,20 +1,20 @@
-# Moralis Wallet Balance Checker
+# Moralis Wallet Explorer
 
-A lightweight, **browser-based** tool that uses the Moralis Web3 Data API to fetch and display the native balance of any EVM wallet (Ethereum, BNB Chain, Polygon, Avalanche, Fantom, Cronos) – all powered by **PyScript**, so the logic runs entirely in Python **inside** your browser.
+A lightweight, **browser-based** application that uses the Moralis Web3 Data API to fetch and display the native balance of any EVM wallet (Ethereum, BNB Chain, Polygon, Avalanche, Fantom, Cronos) – all powered by **PyScript**, so the logic runs entirely in Python **inside** your browser.
 
 ---
 
-## 1 . Project Goals
+## 1&nbsp;. Project Goals
 * Provide a **zero-install** web page for quickly checking wallet balances.  
 * Showcase how Python can run in the browser via **PyScript** while consuming the Moralis API.  
 * Serve as the foundation for a richer “Web3 Wallet Suite” (transaction history, token/NFT view, transfers, etc.).
 
 ---
 
-## 2 . Technology Stack
+## 2&nbsp;. Technology Stack
 | Layer | Library / Service | Why |
 |-------|-------------------|-----|
-| UI    | HTML + TailwindCSS | Rapid responsive styling, dark-theme friendly |
+| UI    | HTML + TailwindCSS + custom CSS | Responsive dark-mode design with teal & gold accents |
 | Runtime | PyScript (WebAssembly + Pyodide) | Run pure Python in the browser—no servers required |
 | Web3 Data | Moralis Python SDK v0.0.53 | Simple, chain-agnostic endpoints |
 | Helpers | `moralis_helpers.py` | Re-usable wrapper around common Moralis calls |
@@ -22,22 +22,22 @@ A lightweight, **browser-based** tool that uses the Moralis Web3 Data API to fet
 
 ---
 
-## 3 . Folder Structure
+## 3&nbsp;. Folder Structure
 ```
 / (branch droid/pyscript-wallet)
 │
 ├─ index.html          # Main web page with embedded PyScript
-├─ styles.css          # Central theme & component styles
-├─ moralis_helpers.py  # Python helpers to call Moralis endpoints
+├─ styles.css          # Theme & component styles
+├─ moralis_helpers.py  # Python helpers for Moralis endpoints
 ├─ documentation.md    # You are here
 └─ (future assets)
 ```
 
 ---
 
-## 4 . Quick Start
+## 4&nbsp;. Quick Start
 
-### 4.1  Clone & Launch
+### 4.1 Clone & Launch
 ```bash
 git clone https://github.com/Juniorduc44/pathToPython.git
 cd pathToPython
@@ -45,8 +45,8 @@ git checkout droid/pyscript-wallet
 open index.html        # or double-click the file
 ```
 
-### 4.2  Using the Application with the Provided API Key
-The demo already embeds the following Moralis API key in `index.html`:
+### 4.2 Using the Application with the Provided API Key
+The demo embeds the following Moralis API key in `index.html`:
 
 ```
 eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImFhZTUyYzI4LTc3YjMtNGQ4NC1iMTdhLWY5NzE4NmNjMGU5MyIsIm9yZ0lkIjoiMzA0ODYzIiwidXNlcklkIjoiMzEyOTkzIiwidHlwZUlkIjoiMzIwMjdkMDAtYWNhYS00YTFmLTk4NWMtMWQxMzJkZTVmZGQ4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE2ODk1NDI3NDUsImV4cCI6NDg0NTMwMjc0NX0.g-mbcVZbLwTPNJXihBOaJ0WR3wpZTmkTeF8wo-cQQCg
@@ -59,12 +59,12 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImFhZTUyYzI4LTc3YjMtNGQ4NC1iMTd
 
 ---
 
-## 5 . Using `moralis_helpers.py`
+## 5&nbsp;. Using `moralis_helpers.py`
 
 The `moralis_helpers.py` module consolidates common Moralis SDK calls into convenient functions.  
 It can be imported directly in other PyScript components or traditional Python scripts.
 
-### 5.1  Key Functions
+### 5.1 Key Functions
 | Function | Purpose |
 |----------|---------|
 | `get_native_balance(api_key, address, chain="eth")` | Retrieve native balance (ETH/BNB/…) |
@@ -72,7 +72,7 @@ It can be imported directly in other PyScript components or traditional Python s
 | `get_wallet_nfts(api_key, address, …)` | Fetch NFTs owned by a wallet |
 | `get_cross_chain_balances(api_key, address, chains=[…])` | Convenience helper looping balances across chains |
 
-### 5.2  Example (Standalone Python)
+### 5.2 Example (Standalone Python)
 ```python
 from moralis_helpers import get_native_balance, get_cross_chain_balances
 
@@ -90,7 +90,7 @@ Every helper returns a **dictionary** ready for JSON encoding or UI display, and
 
 ---
 
-## 6 . API Details (Native Balance Endpoint)
+## 6&nbsp;. API Details (Native Balance Endpoint)
 
 `evm_api.balance.get_native_balance`
 
@@ -102,14 +102,14 @@ result = evm_api.balance.get_native_balance(api_key=API_KEY, params=params)
 # ➜ {'balance': '319973658297093018740'}
 ```
 
-| Param   | Required | Description                        |
-|---------|----------|------------------------------------|
-| address | ✓        | Wallet to inspect                  |
-| chain   | ✓        | `eth`, `bsc`, `polygon`, `avalanche`, … |
+| Param   | Required | Description                                |
+|---------|----------|--------------------------------------------|
+| address | ✓        | Wallet to inspect                          |
+| chain   | ✓        | `eth`, `bsc`, `polygon`, `avalanche`, …    |
 
 ---
 
-## 7 . Using the Web App
+## 7&nbsp;. Using the Web App
 
 1. Enter the **wallet address** (EVM format, e.g. `0x…`).  
 2. Choose a **blockchain**.  
@@ -119,20 +119,19 @@ A loading spinner indicates the request is in flight. Errors from Moralis (inval
 
 ---
 
-## 8 . Extensibility Roadmap
+## 8&nbsp;. Extensibility Roadmap
 
-| Phase | Feature | Moralis Endpoint |
-|-------|---------|------------------|
-| 1 ✅ | Native balance lookup | `get_native_balance` |
-| 2 | ERC-20 token balances | `get_wallet_token_balances` |
-| 3 | NFT holdings          | `get_wallet_nfts` |
-| 4 | Transaction history   | `transaction.get_wallet_transactions` |
-| 5 | Cross-chain overview  | Helper loops across chains |
-| 6 | Contract interactions | Stream events / ethers.js integration |
+| Phase | Planned Feature | Moralis Endpoint |
+|-------|-----------------|------------------|
+| 1 ✅ | Native balance lookup | `balance.get_native_balance` |
+| 2 | ERC-20 token balances | `token.get_wallet_token_balances` |
+| 3 | NFT gallery          | `nft.get_wallet_nfts` |
+| 4 | Transaction history  | `transaction.get_wallet_transactions` |
+| 5 | Cross-chain overview | Helper loops across chains |
 
 ---
 
-## 9 . Troubleshooting
+## 9&nbsp;. Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
@@ -142,7 +141,7 @@ A loading spinner indicates the request is in flight. Errors from Moralis (inval
 
 ---
 
-## 10 . License
+## 10&nbsp;. License
 MIT — see `LICENSE` (to be added).
 
 ---

@@ -1,16 +1,25 @@
-# Moralis Wallet Balance Checker
+# Moralis Wallet Explorer
 
-A lightweight, **browser-based** tool that uses the Moralis Web3 Data API to fetch and display the native balance of any EVM wallet (Ethereum, BNB Chain, Polygon, Avalanche, Fantom, Cronos) – all powered by **PyScript**, so the logic runs entirely in Python **inside** your browser.
+A **single-page, zero-backend** web application that lets you fetch and display the native balance of any EVM wallet (Ethereum, BNB Chain, Polygon, Avalanche, Fantom, Cronos) directly in your browser.  
+Built with **PyScript** (Python running in WebAssembly) and the **Moralis Web3 Data API**.
 
-## Features
-- Zero-install: open a single HTML file, no backend required  
-- Supports six major EVM chains (dropdown selector)  
-- Responsive UI styled with TailwindCSS, colour palette inspired by the PyScript “Python Quest” demo  
-- Built for extension: token balances, NFTs, tx history can be added later
+---
 
-## Quick Start
+## ✨ Key Features
 
-1. **Clone the repo and switch to the wallet branch**
+| Feature | Description |
+|---------|-------------|
+| 🔗 Multi-Chain Support | Choose from six major EVM networks via a dropdown. |
+| ⚡ Runs Fully in the Browser | No server or build pipeline; open `index.html` and go. |
+| 🐍 Python-Powered | Logic written in Python thanks to PyScript & Pyodide. |
+| 🎨 Dark UI | Modern, responsive interface with a cohesive teal / gold palette. |
+| 📈 Extensible | Foundation for token balances, NFTs, and tx history (see roadmap). |
+
+---
+
+## 🚀 Quick Start
+
+1. **Clone & switch to the wallet branch**
 
    ```bash
    git clone https://github.com/Juniorduc44/pathToPython.git
@@ -18,25 +27,68 @@ A lightweight, **browser-based** tool that uses the Moralis Web3 Data API to fet
    git checkout droid/pyscript-wallet
    ```
 
-2. **Open `index.html` in your browser**  
-   (double-click the file or `open index.html` on mac / `start index.html` on Windows).
+2. **Open the app**
 
-3. **Enter a wallet address**, pick a chain, and click **Check Balance**.
+   Double-click `index.html` (or run `open index.html` / `start index.html`).  
+   The page loads locally—no internet except for fetching PyScript & Moralis.
 
-> **API Key**  
-> The demo embeds a Moralis API key directly in `index.html`.  
-> For production use, secure your key via a backend or set domain/usage limits in the Moralis dashboard.
+3. **Check a balance**
 
-## Requirements
-- Modern browser with WebAssembly enabled (Chrome, Edge, Firefox, Safari).
-
-## Roadmap
-| Phase | Planned addition |
-|-------|------------------|
-| 2     | ERC-20 token balances |
-| 3     | NFT holdings |
-| 4     | Transaction history & cross-chain overview |
+   • Paste a wallet address (0x…)  
+   • Select a chain  
+   • Click **Check Balance** → balance appears instantly.
 
 ---
 
-MIT License – see `LICENSE` (to be added).
+## 🔑 API Key Configuration
+
+The demo embeds a Moralis API key in `index.html`:
+
+```
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+For production:
+
+1. Replace the placeholder key with **your own** in `index.html` near the top of the embedded PyScript.
+2. Restrict the key (domain, rate limits) in the Moralis dashboard **or** proxy requests through a minimal backend to keep the key secret.
+
+---
+
+## 🧑‍💻 Local Development
+
+| Task | Command / Action |
+|------|------------------|
+| Modify styles | Edit `styles.css` (pure CSS). |
+| Tweak logic  | Update the embedded `<py-script>` in `index.html` or extend helpers in `moralis_helpers.py`. |
+| Install Python deps for helpers | `pip install moralis` (only if running helpers outside the browser). |
+
+Changes are visible on browser refresh—no build step needed.
+
+---
+
+## 🛣️ Roadmap
+
+| Phase | Planned Feature | Moralis Endpoint |
+|-------|-----------------|------------------|
+| 1 ✅ | Native balance lookup | `balance.get_native_balance` |
+| 2 | ERC-20 token balances | `token.get_wallet_token_balances` |
+| 3 | NFT gallery | `nft.get_wallet_nfts` |
+| 4 | Transaction history | `transaction.get_wallet_transactions` |
+| 5 | Cross-chain dashboard | Aggregate endpoints across networks |
+
+---
+
+## 🏗️ Tech Stack
+
+| Layer | Library / Service |
+|-------|-------------------|
+| Front-end | HTML, TailwindCSS, custom CSS |
+| Runtime  | PyScript · Pyodide |
+| Web3 Data | Moralis Web3 Data API v0.0.53 |
+
+---
+
+## ⚖️ License
+
+MIT – see `LICENSE` for details.
