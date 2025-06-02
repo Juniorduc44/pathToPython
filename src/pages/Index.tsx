@@ -1,10 +1,12 @@
 /**
  * @file Index.tsx
- * @version 1.3.0
+ * @version 1.4.0
  * @description Main entry point for Python Quest, handling authentication routing and dashboard display.
  * This component now orchestrates the display of either the LoginPage or the main Dashboard
  * based on the user's authentication state. It integrates the new AuthContext for
  * self-custody keystore authentication and guest mode.
+ * Includes functionality for keystore users to save their progress to a new keystore file.
+ * Guest users can upgrade their session to a keystore account, migrating their progress.
  *
  * @project Python Quest - A Gamified Python Learning Platform
  * @author Factory AI Development Team
@@ -12,15 +14,15 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Code, Gamepad2, Zap, Heart, ChevronDown, Lock, UserPlus, LogOut, ShieldAlert, KeyRound, Loader2 } from 'lucide-react';
+import { Code, Gamepad2, Zap, Heart, ChevronDown, Lock, UserPlus, LogOut, ShieldAlert, KeyRound, Loader2, Save, DownloadCloud, Info } from 'lucide-react';
 import LessonCard from '@/components/LessonCard';
 import ProgressBar from '@/components/ProgressBar';
 import ThemeToggle from '@/components/ThemeToggle';
 import LessonView from '@/pages/LessonView';
-import LoginPage from '@/components/LoginPage'; // Import the LoginPage
+import LoginPage from '@/components/LoginPage';
 import { ThemeProvider } from '@/contexts/ThemeContext';
-import { ProgressProvider, useProgress } from '@/contexts/ProgressContext'; // Import useProgress
-import { AuthProvider, useAuth, AuthMode } from '@/contexts/AuthContext'; // Import Auth context and hook
+import { ProgressProvider, useProgress } from '@/contexts/ProgressContext';
+import { AuthProvider, useAuth, AuthMode } from '@/contexts/AuthContext';
 import { lessons as allLessonsData, chapters as allChaptersData, Lesson } from '@/data/lessons';
 import { Button } from '@/components/ui/button';
 import {
@@ -40,6 +42,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/components/ui/use-toast"; // For save progress feedback
 
 
 const TOTAL_LESSONS = allLessonsData.length;
@@ -51,18 +54,18 @@ const TOTAL_LESSONS = allLessonsData.length;
  */
 const Dashboard: React.FC = () => {
   const [selectedLesson, setSelectedLesson] = useState<string | null>(null);
-  const { completedLessons, xp, level, getChapterProgress, isLessonCompleted, clearProgress } = useProgress(); // Get clearProgress
-  const { authMode, currentUser, logout: authLogout, createAccount: upgradeToKeystoreAccount, isLoading: isAuthLoading } = useAuth(); // Renamed logout to authLogout to avoid conflict
+  const { completedLessons, xp, level, getChapterProgress, isLessonCompleted, clearProgress, getCurrentProgressData } = useProgress();
+  const { authMode, currentUser, logout: authLogout, createAccount: upgradeToKeystoreAccount, saveProgressToKeystore, isLoading: isAuthLoading, error: authErrorHook, setError: setAuthErrorHook } = useAuth();
   
   const [activeAccordionItem, setActiveAccordionItem] = useState<string | undefined>(
     allChaptersData.length > 0 ? `chapter-${allChaptersData[0].id}` : undefined
   );
 
-  // State for guest-to-keystore upgrade modal
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [upgradePassword, setUpgradePassword] = useState('');
   const [upgradeConfirmPassword, setUpgradeConfirmPassword] = useState('');
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  const { toast } = useToast();
 
 
   const lessonsByChapter = useMemo(() => {
@@ -101,6 +104,8 @@ const Dashboard: React.FC = () => {
   const handleUpgradeAccountSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpgradeError(null);
+    if (setAuthErrorHook) setAuthErrorHook(null);
+
     if (upgradePassword !== upgradeConfirmPassword) {
       setUpgradeError("Passwords do not match.");
       return;
@@ -110,22 +115,47 @@ const Dashboard: React.FC = () => {
       return;
     }
     try {
-      // The AuthContext's createAccount should handle progress migration if needed.
-      // For now, it creates a new account; ProgressContext will load based on the new user.
-      // If guest progress needs to be explicitly moved, that logic belongs in AuthContext.createAccount.
-      await upgradeToKeystoreAccount(upgradePassword); 
+      const currentGuestProgress = getCurrentProgressData(); // Get current guest progress
+      await upgradeToKeystoreAccount(upgradePassword, currentGuestProgress); // Pass progress
       setIsUpgradeModalOpen(false); 
       setUpgradePassword('');
       setUpgradeConfirmPassword('');
+      toast({
+        title: "Account Created & Keystore Downloaded!",
+        description: "Your progress has been secured. Keep your keystore file safe.",
+        variant: "success",
+      });
     } catch (err: any) {
-      setUpgradeError(err.message || "Failed to create account.");
+      // AuthContext might set its own error, or we can set a local one
+      setUpgradeError(authErrorHook || err.message || "Failed to create account.");
     }
   };
 
   const handleLogout = () => {
     console.debug("[Index.tsx] handleLogout called. Clearing progress then logging out.");
-    clearProgress(); // Clear progress specific to the current authMode (guest or keystore user)
-    authLogout();    // AuthContext logout will change authMode to 'unauthenticated'
+    clearProgress(); 
+    authLogout();    
+  };
+
+  const handleSaveProgress = async () => {
+    if (authMode === 'keystore') {
+      const currentProgress = getCurrentProgressData();
+      try {
+        await saveProgressToKeystore(currentProgress);
+        toast({
+          title: "Progress Saved to New Keystore!",
+          description: "Your updated keystore file has been downloaded. Replace your old one.",
+          variant: "success",
+          duration: 7000,
+        });
+      } catch (err: any) {
+        toast({
+          title: "Save Failed",
+          description: authErrorHook || err.message || "Could not save progress to keystore.",
+          variant: "destructive",
+        });
+      }
+    }
   };
 
 
@@ -162,24 +192,44 @@ const Dashboard: React.FC = () => {
                 <p className="text-xs md:text-sm text-gray-400">Level up your coding skills</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3">
               {authMode === 'guest' && (
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="border-green-500 text-green-400 hover:bg-green-500/10 hover:text-green-300"
-                  onClick={() => setIsUpgradeModalOpen(true)}
-                >
-                  <UserPlus className="h-4 w-4 mr-1 md:mr-2" /> Create Account
-                </Button>
+                <>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="border-blue-500 text-blue-400 hover:bg-blue-500/10 hover:text-blue-300 px-2 md:px-3"
+                    onClick={() => { clearProgress(); authLogout(); /* This will redirect to LoginPage */ }}
+                  >
+                    <LogIn className="h-4 w-4 md:mr-2" /> <span className="hidden md:inline">Login</span>
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="border-green-500 text-green-400 hover:bg-green-500/10 hover:text-green-300 px-2 md:px-3"
+                    onClick={() => setIsUpgradeModalOpen(true)}
+                  >
+                    <UserPlus className="h-4 w-4 md:mr-2" /> <span className="hidden md:inline">Create Account</span>
+                  </Button>
+                </>
               )}
               {authMode === 'keystore' && currentUser && (
                 <>
-                  <span className="text-xs text-gray-400 hidden md:inline">
+                  <span className="text-xs text-gray-400 hidden lg:inline">
                     ID: {currentUser.publicKeyHex.substring(0, 6)}...{currentUser.publicKeyHex.slice(-4)}
                   </span>
-                  <Button size="sm" variant="outline" onClick={handleLogout} className="border-red-500 text-red-400 hover:bg-red-500/10 hover:text-red-300">
-                    <LogOut className="h-4 w-4 mr-1 md:mr-2" /> Logout
+                   <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="border-purple-500 text-purple-400 hover:bg-purple-500/10 hover:text-purple-300 px-2 md:px-3"
+                    onClick={handleSaveProgress}
+                    disabled={isAuthLoading}
+                  >
+                    {isAuthLoading && authErrorHook === null ? <Loader2 className="h-4 w-4 md:mr-2 animate-spin" /> : <Save className="h-4 w-4 md:mr-2" />}
+                     <span className="hidden md:inline">Save Progress</span>
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleLogout} className="border-red-500 text-red-400 hover:bg-red-500/10 hover:text-red-300 px-2 md:px-3">
+                    <LogOut className="h-4 w-4 md:mr-2" /> <span className="hidden md:inline">Logout</span>
                   </Button>
                 </>
               )}
@@ -191,12 +241,15 @@ const Dashboard: React.FC = () => {
 
       {authMode === 'guest' && (
          <Alert className="container mx-auto mt-4 max-w-3xl bg-purple-900/30 border-purple-500/50 text-purple-300">
-            <ShieldAlert className="h-5 w-5 text-purple-400" />
+            <Info className="h-5 w-5 text-purple-400" />
             <AlertTitle className="font-semibold text-purple-300">You are in Guest Mode!</AlertTitle>
             <AlertDescription className="text-sm text-purple-400">
-              Your progress is saved temporarily for this session. To secure your progress permanently and access it anywhere, 
+              Your progress is saved temporarily for this browser session. 
               <Button variant="link" className="p-0 h-auto text-green-400 hover:text-green-300 underline ml-1" onClick={() => setIsUpgradeModalOpen(true)}>
-                create a free Keystore Account
+                Create a Keystore Account
+              </Button> to save progress permanently and access it anywhere.
+              Or, <Button variant="link" className="p-0 h-auto text-blue-400 hover:text-blue-300 underline ml-1" onClick={() => { clearProgress(); authLogout(); }}>
+                Login with an existing Keystore
               </Button>.
             </AlertDescription>
           </Alert>
@@ -351,7 +404,7 @@ const Dashboard: React.FC = () => {
               <KeyRound className="mr-2" /> Secure Your Progress
             </DialogTitle>
             <DialogDescription className="text-gray-400">
-              Create a self-custody keystore account to save your current progress permanently. Choose a strong password.
+              Create a self-custody keystore account to save your current progress permanently. Choose a strong password. Your current guest progress will be included in the new keystore.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleUpgradeAccountSubmit} className="space-y-4 pt-4">
@@ -361,7 +414,7 @@ const Dashboard: React.FC = () => {
                 id="upgradePassword"
                 type="password"
                 value={upgradePassword}
-                onChange={(e) => setUpgradePassword(e.target.value)}
+                onChange={(e) => {setUpgradePassword(e.target.value); setUpgradeError(null); if(setAuthErrorHook) setAuthErrorHook(null);}}
                 placeholder="Min. 8 characters"
                 className="mt-1 bg-gray-700 border-gray-600 text-white placeholder-gray-500"
                 disabled={isAuthLoading}
@@ -373,16 +426,17 @@ const Dashboard: React.FC = () => {
                 id="upgradeConfirmPassword"
                 type="password"
                 value={upgradeConfirmPassword}
-                onChange={(e) => setUpgradeConfirmPassword(e.target.value)}
+                onChange={(e) => {setUpgradeConfirmPassword(e.target.value); setUpgradeError(null); if(setAuthErrorHook) setAuthErrorHook(null);}}
                 placeholder="Confirm your new password"
                 className="mt-1 bg-gray-700 border-gray-600 text-white placeholder-gray-500"
                 disabled={isAuthLoading}
               />
             </div>
             {upgradeError && <p className="text-sm text-red-400 flex items-center"><ShieldAlert size={16} className="mr-1" />{upgradeError}</p>}
+            {authErrorHook && <p className="text-sm text-red-400 flex items-center"><ShieldAlert size={16} className="mr-1" />{authErrorHook}</p>}
             <DialogFooter className="sm:justify-start pt-2">
               <Button type="submit" className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white" disabled={isAuthLoading}>
-                {isAuthLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                {isAuthLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <DownloadCloud className="mr-2 h-4 w-4" />}
                 Create Account & Download Keystore
               </Button>
               <DialogClose asChild>
@@ -404,7 +458,7 @@ const Dashboard: React.FC = () => {
  * Renders LoginPage if unauthenticated, otherwise renders the DashboardWrapper.
  */
 const AppContentRouter: React.FC = () => {
-  const { authMode, isLoading: isAuthLoadingHook } = useAuth(); // Renamed isLoading to avoid conflict
+  const { authMode, isLoading: isAuthLoadingHook } = useAuth(); 
   const { isLoadingProgress } = useProgress();
 
 
