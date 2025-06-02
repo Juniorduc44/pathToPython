@@ -1,90 +1,42 @@
+# Moralis Wallet Balance Checker
 
-<h1 align="center"> From Lovable project to FactoryAI project self hosted on IPFS </h1>
-<p align="center">
-  <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="./images/main_00.png">
-      <img src="./images/main_00.png">
-  </picture>
-</p>
+A lightweight, **browser-based** tool that uses the Moralis Web3 Data API to fetch and display the native balance of any EVM wallet (Ethereum, BNB Chain, Polygon, Avalanche, Fantom, Cronos) – all powered by **PyScript**, so the logic runs entirely in Python **inside** your browser.
 
+## Features
+- Zero-install: open a single HTML file, no backend required  
+- Supports six major EVM chains (dropdown selector)  
+- Responsive UI styled with TailwindCSS, colour palette inspired by the PyScript “Python Quest” demo  
+- Built for extension: token balances, NFTs, tx history can be added later
 
+## Quick Start
 
+1. **Clone the repo and switch to the wallet branch**
 
-## Project info
+   ```bash
+   git clone https://github.com/Juniorduc44/pathToPython.git
+   cd pathToPython
+   git checkout droid/pyscript-wallet
+   ```
 
-**Old URL**: https://lovable.dev/projects/4c62f56e-6451-4979-8209-2423b9ec2d1a
+2. **Open `index.html` in your browser**  
+   (double-click the file or `open index.html` on mac / `start index.html` on Windows).
 
-**New URL**: https://dweb.link/ipfs/bafybeifxvagbphcgdezkdtd2knyygu74yaltexaqnjmvfvkoi5pujoqmeq?filename=disthttps://dweb.link/ipfs/bafybeifxvagbphcgdezkdtd2knyygu74yaltexaqnjmvfvkoi5pujoqmeq?filename=dist
+3. **Enter a wallet address**, pick a chain, and click **Check Balance**.
 
+> **API Key**  
+> The demo embeds a Moralis API key directly in `index.html`.  
+> For production use, secure your key via a backend or set domain/usage limits in the Moralis dashboard.
 
-## How can I edit this code?
+## Requirements
+- Modern browser with WebAssembly enabled (Chrome, Edge, Firefox, Safari).
 
-There are several ways of editing your application.
+## Roadmap
+| Phase | Planned addition |
+|-------|------------------|
+| 2     | ERC-20 token balances |
+| 3     | NFT holdings |
+| 4     | Transaction history & cross-chain overview |
 
-**Use Lovable**
+---
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/4c62f56e-6451-4979-8209-2423b9ec2d1a) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/4c62f56e-6451-4979-8209-2423b9ec2d1a) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
-
-
-
-
+MIT License – see `LICENSE` (to be added).

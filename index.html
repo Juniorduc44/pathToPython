@@ -1,24 +1,140 @@
-
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Python Quest</title>
-    <link rel="stylesheet" href="https://pyscript.net/releases/2025.5.1/core.css">
-    <script type="module" src="https://pyscript.net/releases/2025.5.1/core.js"></script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script src="https://cdn.gpteng.co/gptengineer.js" type="module"></script>
-    <script type="module" src="./src/main.tsx"></script>
-    <script type="py" config="./pyscript.json">
-      # Global PyScript setup for code execution
-      from pyscript import document
-      import sys
-      import io
-      from contextlib import redirect_stdout, redirect_stderr
-    </script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moralis Wallet Balance Checker</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <script defer src="https://pyscript.net/latest/pyscript.js"></script>
+    <py-config>
+        packages = ["moralis"]
+    </py-config>
+</head>
+<body>
+    <div class="container mx-auto px-4 py-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold mb-2">Moralis Wallet Balance Checker</h1>
+            <p class="text-lg text-gray-400">Check the balance of any wallet across multiple blockchains</p>
+        </header>
+
+        <div class="max-w-xl mx-auto">
+            <div class="card p-6 mb-6">
+                <form id="wallet-form" class="space-y-4">
+                    <div>
+                        <label for="wallet-address">Wallet Address</label>
+                        <input type="text" id="wallet-address" placeholder="Enter wallet address (0x...)" required>
+                    </div>
+                    <div>
+                        <label for="chain">Blockchain</label>
+                        <select id="chain" required>
+                            <option value="eth">Ethereum</option>
+                            <option value="bsc">Binance Smart Chain</option>
+                            <option value="polygon">Polygon</option>
+                            <option value="avalanche">Avalanche</option>
+                            <option value="fantom">Fantom</option>
+                            <option value="cronos">Cronos</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center">
+                        <button type="submit" class="btn-primary flex-grow">Check Balance</button>
+                        <div id="loading" class="loading ml-3"></div>
+                    </div>
+                </form>
+            </div>
+
+            <div id="result-box" class="card p-6 hidden">
+                <h2 class="text-xl font-semibold mb-4">Wallet Balance</h2>
+                <div id="result-content" class="result-container pl-4 py-2">
+                    <p id="wallet-info" class="mb-2 text-gray-400"></p>
+                    <div class="flex justify-between items-center">
+                        <span class="text-lg">Native Balance:</span>
+                        <span id="balance-value" class="text-xl font-bold text-green-400"></span>
+                    </div>
+                    <p id="balance-usd" class="text-right text-gray-400 text-sm"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <py-script>
+import json
+from js import document, console
+from pyodide.ffi import create_proxy
+from moralis import evm_api
+
+# Moralis API key - In production, this should be secured properly
+API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImFhZTUyYzI4LTc3YjMtNGQ4NC1iMTdhLWY5NzE4NmNjMGU5MyIsIm9yZ0lkIjoiMzA0ODYzIiwidXNlcklkIjoiMzEyOTkzIiwidHlwZUlkIjoiMzIwMjdkMDAtYWNhYS00YTFmLTk4NWMtMWQxMzJkZTVmZGQ4IiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE2ODk1NDI3NDUsImV4cCI6NDg0NTMwMjc0NX0.g-mbcVZbLwTPNJXihBOaJ0WR3wpZTmkTeF8wo-cQQCg"
+
+# Chain symbols to display names mapping
+CHAIN_NAMES = {
+    "eth": "Ethereum",
+    "bsc": "Binance Smart Chain",
+    "polygon": "Polygon",
+    "avalanche": "Avalanche",
+    "fantom": "Fantom",
+    "cronos": "Cronos"
+}
+
+# Format balance to be more readable
+def format_balance(balance_wei, decimals=18):
+    balance = int(balance_wei) / (10 ** decimals)
+    if balance < 0.000001 and balance > 0:
+        return f"{balance:.8f}"
+    return f"{balance:.6f}"
+
+# Handle form submission
+def check_balance(event):
+    event.preventDefault()
+    
+    # Show loading indicator
+    document.getElementById("loading").style.display = "block"
+    document.getElementById("result-box").classList.add("hidden")
+    
+    # Get form values
+    address = document.getElementById("wallet-address").value
+    chain = document.getElementById("chain").value
+    
+    try:
+        # Prepare parameters for Moralis API call
+        params = {
+            "address": address,
+            "chain": chain,
+        }
+        
+        # Call Moralis API to get native balance
+        result = evm_api.balance.get_native_balance(
+            api_key=API_KEY,
+            params=params,
+        )
+        
+        # Display results
+        document.getElementById("wallet-info").innerText = f"Address: {address}"
+        document.getElementById("balance-value").innerText = f"{format_balance(result['balance'])} {get_native_symbol(chain)}"
+        document.getElementById("result-box").classList.remove("hidden")
+    except Exception as e:
+        console.error(f"Error: {str(e)}")
+        document.getElementById("result-content").innerHTML = f"<p class='text-red-500'>Error: {str(e)}</p>"
+        document.getElementById("result-box").classList.remove("hidden")
+    finally:
+        # Hide loading indicator
+        document.getElementById("loading").style.display = "none"
+
+# Get native token symbol based on chain
+def get_native_symbol(chain):
+    symbols = {
+        "eth": "ETH",
+        "bsc": "BNB",
+        "polygon": "MATIC",
+        "avalanche": "AVAX",
+        "fantom": "FTM",
+        "cronos": "CRO"
+    }
+    return symbols.get(chain, "")
+
+# Add event listener to form
+form = document.getElementById("wallet-form")
+form.addEventListener("submit", create_proxy(check_balance))
+    </py-script>
+</body>
 </html>
