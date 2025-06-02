@@ -5,6 +5,7 @@
  * This context provides a centralized way to track and update user achievements throughout the
  * Python Quest application. It now handles persistence of progress data scoped by authentication
  * mode and user identity, using sessionStorage for guests and localStorage for authenticated users.
+ * It also loads initial progress from a keystore file if provided by AuthContext.
  *
  * @project Python Quest - A Gamified Python Learning Platform
  * @author Factory AI Development Team
@@ -13,7 +14,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { lessons as allLessonsData, Lesson } from '@/data/lessons';
-import { useAuth } from '@/contexts/AuthContext'; // Import useAuth to access authentication state
+import { useAuth, ProgressData as AuthProgressData } from '@/contexts/AuthContext'; // Import useAuth and ProgressData
 
 // =====================================================================================
 // CONSTANTS
@@ -32,13 +33,14 @@ interface ProgressContextType {
   completedLessons: Set<string>;
   xp: number;
   level: number;
-  isLoadingProgress: boolean; // Added to indicate when progress is being loaded
+  isLoadingProgress: boolean;
   completeLesson: (lessonId: string) => void;
   isLessonCompleted: (lessonId: string) => boolean;
   getOverallProgress: () => number;
   getChapterProgress: (chapterId: number) => { completed: number; total: number; percentage: number };
   getTotalLessonsInChapter: (chapterId: number) => number;
-  clearProgress: () => void; // Added to explicitly clear progress
+  clearProgress: () => void;
+  getCurrentProgressData: () => AuthProgressData; // To provide data for saving to keystore
 }
 
 // =====================================================================================
@@ -50,12 +52,13 @@ const ProgressContext = createContext<ProgressContextType | undefined>(undefined
 // PROVIDER COMPONENT
 // =====================================================================================
 export const ProgressProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { authMode, currentUser, isLoading: isAuthLoading } = useAuth(); // Get auth state
+  const { authMode, currentUser, isLoading: isAuthLoading, initialProgressFromKeystore } = useAuth();
 
   const [completedLessons, setCompletedLessons] = useState<Set<string>>(new Set());
   const [xp, setXp] = useState<number>(0);
   const [level, setLevel] = useState<number>(1);
   const [isLoadingProgress, setIsLoadingProgress] = useState<boolean>(true);
+  const [hasProcessedInitialKeystoreProgress, setHasProcessedInitialKeystoreProgress] = useState(false);
 
   const getStorageKey = useCallback((): string | null => {
     if (authMode === 'guest') {
@@ -77,7 +80,6 @@ export const ProgressProvider: React.FC<{ children: ReactNode }> = ({ children }
     return null;
   }, [authMode, currentUser]);
   
-  // Function to reset progress state
   const resetProgressState = useCallback(() => {
     console.debug("[ProgressContext] Resetting progress state to defaults.");
     setCompletedLessons(new Set());
@@ -85,70 +87,77 @@ export const ProgressProvider: React.FC<{ children: ReactNode }> = ({ children }
     setLevel(1);
   }, []);
 
-  // Effect for Loading Progress based on Auth State
+  // Effect for Loading Progress based on Auth State and Keystore Data
   useEffect(() => {
     if (isAuthLoading) {
-      // Wait for authentication to initialize
       setIsLoadingProgress(true);
       return;
     }
 
     setIsLoadingProgress(true);
-    console.debug(`[ProgressContext] Auth mode changed to: ${authMode}. Current user: ${currentUser?.publicKeyHex}. Attempting to load progress.`);
+    console.debug(`[ProgressContext] Auth state updated. Mode: ${authMode}, User: ${currentUser?.publicKeyHex}, InitialKeystoreProgress: ${initialProgressFromKeystore ? 'Yes' : 'No'}`);
 
+    // If auth mode changes, reset flag for processing initial keystore progress
+    if (authMode !== 'keystore' || !currentUser) {
+        setHasProcessedInitialKeystoreProgress(false);
+    }
+    
     const storage = getStorage();
     const storageKey = getStorageKey();
 
-    if (authMode === 'unauthenticated' || !storage || !storageKey) {
+    if (authMode === 'keystore' && currentUser && initialProgressFromKeystore && !hasProcessedInitialKeystoreProgress) {
+      console.debug(`[ProgressContext] Loading progress from initialProgressFromKeystore for user ${currentUser.publicKeyHex}`);
+      setCompletedLessons(new Set(initialProgressFromKeystore.completedLessons));
+      setXp(initialProgressFromKeystore.xp);
+      setLevel(initialProgressFromKeystore.level);
+      setHasProcessedInitialKeystoreProgress(true); // Mark as processed for this login/creation
+      console.debug("[ProgressContext] Progress loaded from keystore data:", initialProgressFromKeystore);
+      // This state will be saved to localStorage by the saving useEffect
+    } else if (storage && storageKey) {
+      try {
+        const savedProgressString = storage.getItem(storageKey);
+        if (savedProgressString) {
+          console.debug(`[ProgressContext] Found saved progress in ${authMode === 'guest' ? 'sessionStorage' : 'localStorage'} for key: ${storageKey}`);
+          const savedProgress = JSON.parse(savedProgressString);
+          if (
+            savedProgress &&
+            Array.isArray(savedProgress.completed) &&
+            typeof savedProgress.userXp === 'number' &&
+            typeof savedProgress.userLevel === 'number'
+          ) {
+            setCompletedLessons(new Set(savedProgress.completed));
+            setXp(savedProgress.userXp);
+            setLevel(savedProgress.userLevel);
+            console.debug("[ProgressContext] Progress loaded successfully from storage:", savedProgress);
+          } else {
+            console.warn(`[ProgressContext] Malformed progress data for key: ${storageKey}. Resetting.`);
+            resetProgressState();
+            storage.removeItem(storageKey);
+          }
+        } else {
+          console.debug(`[ProgressContext] No saved progress found for key: ${storageKey}. Resetting to default state.`);
+          resetProgressState();
+        }
+      } catch (error) {
+        console.error(`[ProgressContext] Error loading progress for key ${storageKey}:`, error);
+        resetProgressState();
+      }
+    } else { // Unauthenticated or unable to determine storage
       console.debug("[ProgressContext] Unauthenticated or no storage key. Resetting progress state.");
       resetProgressState();
-      setIsLoadingProgress(false);
-      return;
     }
-    
-    try {
-      const savedProgressString = storage.getItem(storageKey);
-      if (savedProgressString) {
-        console.debug(`[ProgressContext] Found saved progress for key: ${storageKey}`);
-        const savedProgress = JSON.parse(savedProgressString);
-        if (
-          savedProgress &&
-          Array.isArray(savedProgress.completed) &&
-          typeof savedProgress.userXp === 'number' &&
-          typeof savedProgress.userLevel === 'number'
-        ) {
-          setCompletedLessons(new Set(savedProgress.completed));
-          setXp(savedProgress.userXp);
-          setLevel(savedProgress.userLevel);
-          console.debug("[ProgressContext] Progress loaded successfully:", savedProgress);
-        } else {
-          console.warn(`[ProgressContext] Malformed progress data for key: ${storageKey}. Resetting.`);
-          resetProgressState();
-          storage.removeItem(storageKey); // Clean up malformed data
-        }
-      } else {
-        console.debug(`[ProgressContext] No saved progress found for key: ${storageKey}. Resetting to default state.`);
-        resetProgressState(); // No data found, so reset to default state for this user/guest session
-      }
-    } catch (error) {
-      console.error(`[ProgressContext] Error loading progress for key ${storageKey}:`, error);
-      resetProgressState(); // Reset on error
-    } finally {
-      setIsLoadingProgress(false);
-    }
-  }, [authMode, currentUser, isAuthLoading, resetProgressState, getStorage, getStorageKey]);
+    setIsLoadingProgress(false);
+  }, [authMode, currentUser, isAuthLoading, initialProgressFromKeystore, resetProgressState, getStorage, getStorageKey, hasProcessedInitialKeystoreProgress]);
 
 
   // Effect for Saving Progress based on Auth State
   useEffect(() => {
-    // Don't save if progress is still loading or auth is initializing
     if (isLoadingProgress || isAuthLoading) return;
 
     const storage = getStorage();
     const storageKey = getStorageKey();
 
     if (authMode === 'unauthenticated' || !storage || !storageKey) {
-      // If unauthenticated, we don't save. Any specific clearing is handled by logout logic.
       console.debug("[ProgressContext] Unauthenticated or no storage key. Not saving progress.");
       return;
     }
@@ -160,7 +169,7 @@ export const ProgressProvider: React.FC<{ children: ReactNode }> = ({ children }
         userLevel: level,
       };
       storage.setItem(storageKey, JSON.stringify(progressToSave));
-      console.debug(`[ProgressContext] Progress saved for key ${storageKey}:`, progressToSave);
+      console.debug(`[ProgressContext] Progress saved to ${authMode === 'guest' ? 'sessionStorage' : 'localStorage'} for key ${storageKey}:`, progressToSave);
     } catch (error) {
       console.error(`[ProgressContext] Error saving progress for key ${storageKey}:`, error);
     }
@@ -226,7 +235,16 @@ export const ProgressProvider: React.FC<{ children: ReactNode }> = ({ children }
         }
     }
     resetProgressState();
+    setHasProcessedInitialKeystoreProgress(false); // Reset this flag too
   }, [resetProgressState, getStorage, getStorageKey]);
+
+  const getCurrentProgressData = useCallback((): AuthProgressData => {
+    return {
+      completedLessons: Array.from(completedLessons),
+      xp,
+      level,
+    };
+  }, [completedLessons, xp, level]);
 
 
   return (
@@ -240,7 +258,8 @@ export const ProgressProvider: React.FC<{ children: ReactNode }> = ({ children }
       getOverallProgress,
       getChapterProgress,
       getTotalLessonsInChapter,
-      clearProgress
+      clearProgress,
+      getCurrentProgressData
     }}>
       {children}
     </ProgressContext.Provider>
