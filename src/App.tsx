@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider } from '@/components/ThemeProvider';
+import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/toaster';
-import { WalletExplorer } from '@/pages/WalletExplorer';
-import { Header } from '@/components/Header';
-import { Footer } from '@/components/Footer';
+import { WalletExplorer } from '@/pages/wallet-explorer';
+import { Header } from '@/components/header';
+import { Footer } from '@/components/footer';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import LoginPage from '@/pages/LoginPage';
 
