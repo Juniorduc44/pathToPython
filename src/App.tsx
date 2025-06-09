@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider } from './components/theme-provider';
-import { Toaster } from './components/ui/toaster';
-import { WalletExplorer } from './pages/wallet-explorer';
-import { Header } from './components/header';
-import { Footer } from './components/footer';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import LoginPage from './pages/LoginPage';
+import { ThemeProvider } from '@/components/theme-provider';
+import { Toaster } from '@/components/ui/toaster';
+import { WalletExplorer } from '@/pages/wallet-explorer';
+import { Header } from '@/components/header';
+import { Footer } from '@/components/footer';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import LoginPage from '@/pages/LoginPage';
 
 // Local storage key for the API key
 const API_KEY_STORAGE_KEY = "moralis-wallet-explorer-api-key";

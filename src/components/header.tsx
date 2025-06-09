@@ -1,7 +1,7 @@
 import { Wallet } from "lucide-react";
 import { Link } from "react-router-dom";
-import { ThemeToggle } from "./theme-toggle";
-import { SettingsDialog } from "./settings-dialog";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import { LogOut, LogIn } from "lucide-react";
 
