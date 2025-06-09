@@ -11,66 +11,89 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Settings } from "lucide-react";
+import { Settings, User as UserIcon, Award, Zap } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { Progress } from "@/components/ui/progress";
 
-// Local storage key for the API key
-const API_KEY_STORAGE_KEY = "moralis-wallet-explorer-api-key";
+// Placeholder for lesson data (similar to WalletExplorer for consistency)
+const LESSONS = [
+  { id: 1, title: "Python Basics: Variables & Data Types", progress: 100, completed: true, xp: 10 },
+  { id: 2, title: "Control Flow: If/Else & Loops", progress: 75, completed: false, xp: 15 },
+  { id: 3, title: "Functions: Building Reusable Code", progress: 50, completed: false, xp: 20 },
+  { id: 4, title: "Data Structures: Lists & Dictionaries", progress: 0, completed: false, xp: 25 },
+  { id: 5, title: "Object-Oriented Programming", progress: 0, completed: false, xp: 30 },
+];
 
-interface SettingsDialogProps {
-  onApiKeyChange: (apiKey: string) => void;
-}
-
-export function SettingsDialog({ onApiKeyChange }: SettingsDialogProps) {
+export function SettingsDialog() {
   const { toast } = useToast();
+  const { user, profile, updateUsername, isLoading: authLoading } = useAuth();
   const [open, setOpen] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const [error, setError] = useState("");
+  const [usernameInput, setUsernameInput] = useState("");
+  const [formError, setFormError] = useState("");
 
-  // Load API key from localStorage when dialog opens
+  // Calculate overall progress for display
+  const totalLessons = LESSONS.length;
+  const completedLessons = LESSONS.filter(lesson => lesson.completed).length;
+  const overallProgress = (completedLessons / totalLessons) * 100;
+
+  // Placeholder for user level and XP
+  const userLevel = 1;
+  const currentXp = 0;
+  const xpToNextLevel = 100;
+  const xpProgress = (currentXp / xpToNextLevel) * 100;
+
+  // Load username from profile when dialog opens or profile changes
   useEffect(() => {
-    if (open) {
-      const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY) || "";
-      setApiKey(savedApiKey);
-      setError("");
+    if (open && profile?.username) {
+      setUsernameInput(profile.username);
+      setFormError("");
+    } else if (open && !profile?.username) {
+      setUsernameInput("");
+      setFormError("");
     }
-  }, [open]);
+  }, [open, profile]);
 
-  const handleSave = () => {
-    // Validate API key
-    if (!apiKey.trim()) {
-      setError("API key cannot be empty");
+  const handleSave = async () => {
+    setFormError("");
+    if (!user) {
+      setFormError("You must be logged in to update your profile.");
       return;
     }
 
-    // Simple format validation (JWT tokens typically have 3 parts separated by dots)
-    if (!apiKey.includes(".")) {
-      setError("API key format appears to be invalid");
+    if (!usernameInput.trim()) {
+      setFormError("Username cannot be empty.");
       return;
     }
 
-    // Save to localStorage
-    localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
-    
-    // Notify parent component
-    onApiKeyChange(apiKey);
-    
-    // Show success toast
-    toast({
-      title: "Settings saved",
-      description: "Your Moralis API key has been saved",
-      variant: "success",
-    });
-    
-    // Close dialog
-    setOpen(false);
+    if (usernameInput.trim().length < 3 || usernameInput.trim().length > 20) {
+      setFormError("Username must be between 3 and 20 characters.");
+      return;
+    }
+
+    // Check if username is different from current profile username
+    if (profile?.username === usernameInput.trim()) {
+      toast({
+        title: "No Changes",
+        description: "Username is already set to this value.",
+        variant: "warning",
+      });
+      setOpen(false);
+      return;
+    }
+
+    // Call updateUsername from AuthContext
+    try {
+      await updateUsername(usernameInput.trim());
+      setOpen(false);
+    } catch (error) {
+      setFormError((error as Error).message || "Failed to update username.");
+    }
   };
 
   const handleCancel = () => {
-    // Reset to saved value
-    const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY) || "";
-    setApiKey(savedApiKey);
-    setError("");
+    setUsernameInput(profile?.username || "");
+    setFormError("");
     setOpen(false);
   };
 
@@ -81,49 +104,77 @@ export function SettingsDialog({ onApiKeyChange }: SettingsDialogProps) {
           variant="outline"
           size="icon"
           className="rounded-full w-8 h-8 border-[#2A3441] bg-[#1E293B] hover:bg-[#2A3441] hover:text-[#3DBBAC]"
-          title="Settings"
+          title="Profile Settings"
         >
           <Settings className="h-4 w-4 text-[#3DBBAC]" />
-          <span className="sr-only">Settings</span>
+          <span className="sr-only">Profile Settings</span>
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px] border-[#2A3441] bg-[#1A2331] text-white">
         <DialogHeader>
-          <DialogTitle className="text-[#3DBBAC]">Settings</DialogTitle>
+          <DialogTitle className="text-[#3DBBAC]">Profile Settings</DialogTitle>
           <DialogDescription className="text-[#A6B0C2]">
-            Configure your Moralis API key to access blockchain data.
+            Manage your username and view your learning progress.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="api-key" className="text-[#A6B0C2] col-span-4">
-              Moralis API Key
+          {/* Username Section */}
+          <div className="space-y-2">
+            <Label htmlFor="username" className="text-[#A6B0C2]">
+              Username
             </Label>
-            <div className="col-span-4">
+            <div className="relative">
+              <UserIcon className="absolute left-3 top-3 h-4 w-4 text-[#A6B0C2]" />
               <Input
-                id="api-key"
-                value={apiKey}
+                id="username"
+                value={usernameInput}
                 onChange={(e) => {
-                  setApiKey(e.target.value);
-                  setError("");
+                  setUsernameInput(e.target.value);
+                  setFormError("");
                 }}
-                placeholder="Enter your Moralis API key"
-                className="bg-[#1E293B] border-[#2A3441] text-white"
+                placeholder="Enter your username"
+                className="pl-10 bg-[#1E293B] border-[#2A3441] text-white"
               />
-              {error && (
-                <p className="text-red-500 text-sm mt-1">{error}</p>
+              {formError && (
+                <p className="text-red-500 text-sm mt-1">{formError}</p>
               )}
-              <p className="text-[#A6B0C2] text-xs mt-2">
-                Get your free API key from{" "}
-                <a
-                  href="https://admin.moralis.io/signup"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#3DBBAC] hover:underline"
-                >
-                  Moralis.io
-                </a>
-              </p>
+            </div>
+          </div>
+
+          {/* Learning Progress Section */}
+          <div className="space-y-2 pt-2">
+            <Label className="text-[#A6B0C2]">Learning Progress</Label>
+            <div className="border border-[#2A3441] rounded-md p-4 bg-[#1E293B]">
+              {/* Level and XP */}
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center">
+                  <Award className="h-5 w-5 text-[#FFD700] mr-2" />
+                  <span className="text-[#A6B0C2]">Current Level</span>
+                </div>
+                <div className="text-[#FFD700] font-bold">{userLevel}</div>
+              </div>
+              
+              {/* XP Progress */}
+              <div className="mb-4">
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-[#A6B0C2]">XP to Next Level</span>
+                  <span className="text-[#A6B0C2]">{currentXp} / {xpToNextLevel} XP</span>
+                </div>
+                <Progress value={xpProgress} className="h-1.5">
+                  <div className="h-full bg-[#FFD700] rounded-full" />
+                </Progress>
+              </div>
+              
+              {/* Course Progress */}
+              <div>
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-[#A6B0C2]">Course Progress</span>
+                  <span className="text-[#A6B0C2]">{completedLessons} / {totalLessons} Lessons</span>
+                </div>
+                <Progress value={overallProgress} className="h-1.5">
+                  <div className="h-full bg-[#3DBBAC] rounded-full" />
+                </Progress>
+              </div>
             </div>
           </div>
         </div>
@@ -139,9 +190,10 @@ export function SettingsDialog({ onApiKeyChange }: SettingsDialogProps) {
           <Button
             type="button"
             onClick={handleSave}
+            disabled={authLoading}
             className="bg-[#3DBBAC] text-[#101823] hover:bg-[#2A9D90]"
           >
-            Save
+            {authLoading ? "Saving..." : "Save Changes"}
           </Button>
         </DialogFooter>
       </DialogContent>

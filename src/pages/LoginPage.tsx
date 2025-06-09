@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ChevronDown, ChevronUp, Mail, Lock, AlertCircle } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, Mail, Lock, AlertCircle, Code } from "lucide-react";
 
 export default function LoginPage() {
   // Auth context
@@ -23,6 +23,8 @@ export default function LoginPage() {
     signUp, 
     clearError 
   } = useAuth();
+
+  const navigate = useNavigate();
 
   // Form states
   const [email, setEmail] = useState("");
@@ -94,6 +96,11 @@ export default function LoginPage() {
     setIsSubmitting(false);
   };
 
+  // Continue as guest
+  const handleContinueAsGuest = () => {
+    navigate('/');
+  };
+
   // Clear errors when switching tabs
   const handleTabChange = (value: string) => {
     setActiveTab(value);
@@ -106,10 +113,10 @@ export default function LoginPage() {
       <Card className="w-full max-w-md border-border bg-card">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center text-primary">
-            Welcome to Path To Python
+            Embark on Your Python Quest!
           </CardTitle>
           <CardDescription className="text-center text-muted-foreground">
-            Sign in to continue your learning journey
+            Sign in or register to begin your coding adventure
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -176,6 +183,30 @@ export default function LoginPage() {
               )}
               Connect with MetaMask
             </Button>
+
+            {/* Register Button - Prominent with Python Quest styling */}
+            <Button 
+              onClick={handleEmailSignup}
+              className="w-full bg-[#3DBBAC] hover:bg-[#2A9D90] text-[#101823] font-bold border-2 border-[#3DBBAC] shadow-md"
+              disabled={authLoading || isSubmitting}
+            >
+              {isSubmitting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Code className="mr-2 h-4 w-4" />
+              )}
+              Register for Python Quest
+            </Button>
+
+            {/* Continue as Guest Button */}
+            <Button 
+              variant="outline"
+              onClick={handleContinueAsGuest}
+              className="w-full border-[#2A3441] hover:bg-[#1E293B] text-[#A6B0C2] hover:text-[#3DBBAC]"
+              disabled={authLoading}
+            >
+              Continue as Guest
+            </Button>
           </div>
 
           {/* Divider */}
@@ -185,7 +216,7 @@ export default function LoginPage() {
             </div>
             <div className="relative flex justify-center text-xs uppercase">
               <span className="bg-card px-2 text-muted-foreground">
-                Or
+                Other Options
               </span>
             </div>
           </div>
@@ -211,9 +242,8 @@ export default function LoginPage() {
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-4">
               <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="login">Login</TabsTrigger>
-                  <TabsTrigger value="signup">Sign Up</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="login">Login with Email</TabsTrigger>
                   <TabsTrigger value="magic">Magic Link</TabsTrigger>
                 </TabsList>
                 
@@ -266,74 +296,6 @@ export default function LoginPage() {
                         </>
                       ) : (
                         "Sign In"
-                      )}
-                    </Button>
-                  </form>
-                </TabsContent>
-                
-                {/* Sign Up Tab */}
-                <TabsContent value="signup" className="mt-4">
-                  <form onSubmit={handleEmailSignup} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-email">Email</Label>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="signup-email"
-                          type="email"
-                          placeholder="name@example.com"
-                          className="pl-10"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          disabled={isSubmitting}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-password">Password</Label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="signup-password"
-                          type="password"
-                          placeholder="••••••••"
-                          className="pl-10"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          disabled={isSubmitting}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="confirm-password">Confirm Password</Label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="confirm-password"
-                          type="password"
-                          placeholder="••••••••"
-                          className="pl-10"
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          disabled={isSubmitting}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <Button 
-                      type="submit" 
-                      className="w-full"
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Creating Account...
-                        </>
-                      ) : (
-                        "Create Account"
                       )}
                     </Button>
                   </form>

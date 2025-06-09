@@ -6,13 +6,12 @@ import { Button } from "@/components/ui/button";
 import { LogOut, LogIn } from "lucide-react";
 
 interface HeaderProps {
-  onApiKeyChange: (apiKey: string) => void;
   isAuthenticated?: boolean;
   username?: string;
   onSignOut?: () => void;
 }
 
-export function Header({ onApiKeyChange, isAuthenticated = false, username = "User", onSignOut }: HeaderProps) {
+export function Header({ isAuthenticated = false, username = "User", onSignOut }: HeaderProps) {
   return (
     <header className="border-b border-border py-4">
       <div className="container mx-auto px-4 flex items-center justify-between">
@@ -58,7 +57,7 @@ export function Header({ onApiKeyChange, isAuthenticated = false, username = "Us
           <div className="bg-[#FFD700] text-[#101823] text-xs font-medium px-3 py-1 rounded">
             <span className="mr-1">⚡</span> Powered by Supabase
           </div>
-          <SettingsDialog onApiKeyChange={onApiKeyChange} />
+          <SettingsDialog />
           <ThemeToggle />
         </div>
       </div>
