@@ -122,7 +122,7 @@ export default function LoginPage() {
         <CardContent className="space-y-4">
           {/* Error display */}
           {(authError || formError) && (
-            <Alert variant="destructive" className="mb-4">
+            <Alert variant="destructive\" className="mb-4">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
                 {formError || authError?.message || "An error occurred"}
@@ -140,7 +140,7 @@ export default function LoginPage() {
               {authLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+                <svg className="mr-2 h-4 w-4\" viewBox="0 0 24 24">
                   <path
                     fill="currentColor"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -170,15 +170,15 @@ export default function LoginPage() {
               {authLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <svg className="mr-2 h-4 w-4" viewBox="0 0 35 33" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M32.9582 1L19.8241 10.7183L22.2665 4.99099L32.9582 1Z" fill="#E2761B" stroke="#E2761B" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M2.04183 1L15.0487 10.809L12.7336 4.99099L2.04183 1Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M28.2041 23.5466L24.7182 28.8816L32.0946 30.9307L34.1946 23.6558L28.2041 23.5466Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M0.805298 23.6558L2.90524 30.9307L10.2816 28.8816L6.79578 23.5466L0.805298 23.6558Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M9.90523 14.5149L7.8324 17.6507L15.1489 17.9782L14.9034 10.0424L9.90523 14.5149Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M25.0947 14.5149L20.0138 9.95215L19.8229 17.9782L27.1394 17.6507L25.0947 14.5149Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M10.2816 28.8815L14.7125 26.7232L10.9399 23.7049L10.2816 28.8815Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M20.2874 26.7232L24.7183 28.8815L24.06 23.7049L20.2874 26.7232Z" fill="#E4761B" stroke="#E4761B" strokeLinecap="round" strokeLinejoin="round"/>
+                <svg className="mr-2 h-4 w-4\" viewBox="0 0 35 33\" fill="none\" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M32.9582 1L19.8241 10.7183L22.2665 4.99099L32.9582 1Z\" fill="#E2761B\" stroke="#E2761B\" strokeLinecap="round\" strokeLinejoin="round"/>
+                  <path d="M2.04183 1L15.0487 10.809L12.7336 4.99099L2.04183 1Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
+                  <path d="M28.2041 23.5466L24.7182 28.8816L32.0946 30.9307L34.1946 23.6558L28.2041 23.5466Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
+                  <path d="M0.805298 23.6558L2.90524 30.9307L10.2816 28.8816L6.79578 23.5466L0.805298 23.6558Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
+                  <path d="M9.90523 14.5149L7.8324 17.6507L15.1489 17.9782L14.9034 10.0424L9.90523 14.5149Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
+                  <path d="M25.0947 14.5149L20.0138 9.95215L19.8229 17.9782L27.1394 17.6507L25.0947 14.5149Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
+                  <path d="M10.2816 28.8815L14.7125 26.7232L10.9399 23.7049L10.2816 28.8815Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
+                  <path d="M20.2874 26.7232L24.7183 28.8815L24.06 23.7049L20.2874 26.7232Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
                 </svg>
               )}
               Connect with MetaMask
