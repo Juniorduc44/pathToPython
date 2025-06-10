@@ -52,7 +52,18 @@ const TOTAL_LESSONS = allLessonsData.length;
 const Dashboard: React.FC = () => {
   const [selectedLesson, setSelectedLesson] = useState<string | null>(null);
   const { completedLessons, xp, level, getChapterProgress, isLessonCompleted } = useProgress();
-  const { authMode, currentUser, logout, createAccount: upgradeToKeystoreAccount, isLoading: isAuthLoading } = useAuth();
+  const { 
+    authMode, 
+    currentUser, 
+    supabaseUser, 
+    profile, 
+    logout, 
+    createAccount: upgradeToKeystoreAccount, 
+    isLoading: isAuthLoading, 
+    isGuest, 
+    isKeystoreAuthenticated, 
+    isSupabaseAuthenticated 
+  } = useAuth();
   
   const [activeAccordionItem, setActiveAccordionItem] = useState<string | undefined>(
     allChaptersData.length > 0 ? `chapter-${allChaptersData[0].id}` : undefined
@@ -138,6 +149,21 @@ const Dashboard: React.FC = () => {
     );
   }
 
+  // Determine username to display in header
+  const displayUsername = useMemo(() => {
+    if (isSupabaseAuthenticated && profile?.username) {
+      return profile.username;
+    }
+    if (isSupabaseAuthenticated && supabaseUser?.email) {
+      return supabaseUser.email.split('@')[0];
+    }
+    if (isKeystoreAuthenticated && currentUser?.publicKeyHex) {
+      return `${currentUser.publicKeyHex.substring(0, 6)}...${currentUser.publicKeyHex.slice(-4)}`;
+    }
+    return "Guest"; // Should not happen if isGuest is true, but as a fallback
+  }, [isSupabaseAuthenticated, profile, supabaseUser, isKeystoreAuthenticated, currentUser]);
+
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
       <header className="border-b border-cyan-500/30 bg-gray-900/50 backdrop-blur-sm sticky top-0 z-50">
@@ -155,7 +181,7 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              {authMode === 'guest' && (
+              {isGuest && (
                 <Button 
                   size="sm" 
                   variant="outline" 
@@ -165,10 +191,10 @@ const Dashboard: React.FC = () => {
                   <UserPlus className="h-4 w-4 mr-1 md:mr-2" /> Create Account
                 </Button>
               )}
-              {authMode === 'keystore' && currentUser && (
+              {(isKeystoreAuthenticated || isSupabaseAuthenticated) && (
                 <>
                   <span className="text-xs text-gray-400 hidden md:inline">
-                    ID: {currentUser.publicKeyHex.substring(0, 6)}...{currentUser.publicKeyHex.slice(-4)}
+                    Welcome, <span className="font-semibold text-cyan-400">{displayUsername}</span>
                   </span>
                   <Button size="sm" variant="outline" onClick={logout} className="border-red-500 text-red-400 hover:bg-red-500/10 hover:text-red-300">
                     <LogOut className="h-4 w-4 mr-1 md:mr-2" /> Logout
@@ -181,7 +207,7 @@ const Dashboard: React.FC = () => {
         </div>
       </header>
 
-      {authMode === 'guest' && (
+      {isGuest && (
          <Alert className="container mx-auto mt-4 max-w-3xl bg-purple-900/30 border-purple-500/50 text-purple-300">
             <ShieldAlert className="h-5 w-5 text-purple-400" />
             <AlertTitle className="font-semibold text-purple-300">You are in Guest Mode!</AlertTitle>
