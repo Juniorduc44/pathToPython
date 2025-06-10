@@ -14,7 +14,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import supabase from '@/lib/supabase'; // Import Supabase client
+import supabase, { getURL } from '@/lib/supabase'; // Import Supabase client and getURL
 import { Session, User, AuthError } from '@supabase/supabase-js'; // Import Supabase types
 
 // =====================================================================================
@@ -562,7 +562,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: getURL(),
         },
       });
 
@@ -586,7 +586,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: getURL(),
         },
       });
 

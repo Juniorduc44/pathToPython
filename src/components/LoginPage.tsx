@@ -8,7 +8,7 @@
  *
  * @project Python Quest - A Gamified Python Learning Platform
  * @author Factory AI Development Team
- * @date June 2, 2025
+ * @date June 10, 2025
  */
 
 import React, { useState, FormEvent, ChangeEvent } from 'react';
@@ -19,7 +19,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { KeyRound, UserPlus, ShieldCheck, UploadCloud, LogIn, PlayCircle, Loader2, AlertTriangle, Eye, EyeOff, Mail, Github } from 'lucide-react';
 import { ThemeProvider } from '@/contexts/ThemeContext';
-import supabase from '@/lib/supabase';
+import supabase from '@/lib/supabase'; // Ensure this import is present
 
 const LoginPage: React.FC = () => {
   const { 
@@ -72,6 +72,7 @@ const LoginPage: React.FC = () => {
     setMagicLinkEmail('');
     setMagicLinkSent(false);
   };
+
 
   const handleCreateAccount = async (e: FormEvent) => {
     e.preventDefault();
@@ -140,7 +141,7 @@ const LoginPage: React.FC = () => {
       const { data, error } = await supabase.auth.signInWithOtp({
         email: magicLinkEmail,
         options: {
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: window.location.href, // Use window.location.href for dynamic redirect
         }
       });
 
@@ -160,7 +161,7 @@ const LoginPage: React.FC = () => {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: window.location.origin
+          redirectTo: window.location.href // Use window.location.href for dynamic redirect
         }
       });
 
