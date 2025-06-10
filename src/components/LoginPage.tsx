@@ -1,428 +1,311 @@
-import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ChevronDown, ChevronUp, Mail, Lock, AlertCircle, Code } from "lucide-react";
+/**
+ * @file LoginPage.tsx
+ * @version 1.1.0
+ * @description Main login and account creation page for Python Quest.
+ * Offers users options to log in with a keystore, create a new self-custody account,
+ * or try the platform as a guest. Emphasizes user data sovereignty and security.
+ * Includes password reveal functionality for improved UX.
+ *
+ * @project Python Quest - A Gamified Python Learning Platform
+ * @author Factory AI Development Team
+ * @date June 2, 2025
+ */
 
-export default function LoginPage() {
-  // Auth context
-  const { 
-    isAuthenticated, 
-    isLoading: authLoading, 
-    error: authError, 
-    signInWithGoogle, 
-    signInWithEmail, 
-    signInWithMagicLink, 
-    signInWithMetaMask, 
-    signUp, 
-    clearError 
-  } = useAuth();
+import React, { useState, FormEvent, ChangeEvent } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { KeyRound, UserPlus, ShieldCheck, UploadCloud, LogIn, PlayCircle, Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 
-  const navigate = useNavigate();
+const LoginPage: React.FC = () => {
+  const { createAccount, loginWithKeystore, switchToGuestMode, isLoading, error: authError, setError: setAuthError } = useAuth();
 
-  // Form states
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [magicLinkEmail, setMagicLinkEmail] = useState("");
-  const [otherOptionsOpen, setOtherOptionsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("login");
-  const [formError, setFormError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // State for active tab
+  const [activeTab, setActiveTab] = useState<string>("login");
 
-  // If already authenticated, redirect to home
-  if (isAuthenticated) {
-    return <Navigate to="/" replace />;
-  }
+  // State for Create Account form
+  const [createPassword, setCreatePassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [showCreatePassword, setShowCreatePassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Handle email/password login
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  // State for Login with Keystore form
+  const [keystoreFile, setKeystoreFile] = useState<File | null>(null);
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+
+  const clearLocalErrors = () => {
+    setCreateError(null);
+    setLoginError(null);
+    if (setAuthError) setAuthError(null); // Clear global auth error if method is available
+  };
+  
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab);
+    clearLocalErrors();
+    // Reset form fields when switching tabs for a cleaner experience
+    setCreatePassword('');
+    setConfirmPassword('');
+    setKeystoreFile(null);
+    const fileInput = document.getElementById('keystoreFile') as HTMLInputElement;
+    if (fileInput) fileInput.value = ''; // Reset file input
+    setLoginPassword('');
+  };
+
+
+  const handleCreateAccount = async (e: FormEvent) => {
     e.preventDefault();
-    setFormError("");
-    
-    if (!email || !password) {
-      setFormError("Email and password are required");
+    clearLocalErrors();
+    if (createPassword !== confirmPassword) {
+      setCreateError("Passwords do not match.");
       return;
     }
-
-    setIsSubmitting(true);
-    await signInWithEmail(email, password);
-    setIsSubmitting(false);
+    if (createPassword.length < 8) {
+      setCreateError("Password must be at least 8 characters long.");
+      return;
+    }
+    await createAccount(createPassword);
+    // AuthContext will handle navigation or state change on success
+    // Error is handled by authError from context
   };
 
-  // Handle email/password signup
-  const handleEmailSignup = async (e: React.FormEvent) => {
+  const handleLoginWithKeystore = async (e: FormEvent) => {
     e.preventDefault();
-    setFormError("");
-    
-    if (!email || !password || !confirmPassword) {
-      setFormError("All fields are required");
+    clearLocalErrors();
+    if (!keystoreFile) {
+      setLoginError("Please select your keystore file.");
       return;
     }
-
-    if (password !== confirmPassword) {
-      setFormError("Passwords do not match");
+    if (!loginPassword) {
+      setLoginError("Please enter your password.");
       return;
     }
-
-    if (password.length < 6) {
-      setFormError("Password must be at least 6 characters");
-      return;
-    }
-
-    setIsSubmitting(true);
-    await signUp(email, password);
-    setIsSubmitting(false);
+    await loginWithKeystore(keystoreFile, loginPassword);
+    // AuthContext handles navigation/state change
   };
 
-  // Handle magic link login
-  const handleMagicLink = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormError("");
-    
-    if (!magicLinkEmail) {
-      setFormError("Email is required");
-      return;
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setKeystoreFile(e.target.files[0]);
+      setLoginError(null); // Clear previous file errors
+    } else {
+      setKeystoreFile(null);
     }
-
-    setIsSubmitting(true);
-    await signInWithMagicLink(magicLinkEmail);
-    setIsSubmitting(false);
   };
 
-  // Continue as guest
-  const handleContinueAsGuest = () => {
-    navigate('/');
-  };
-
-  // Clear errors when switching tabs
-  const handleTabChange = (value: string) => {
-    setActiveTab(value);
-    setFormError("");
-    clearError();
+  const handleGuestMode = () => {
+    clearLocalErrors();
+    switchToGuestMode();
+    // AuthContext handles navigation/state change
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background px-4 py-12">
-      <Card className="w-full max-w-md border-border bg-card">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center text-primary">
-            Embark on Your Python Quest!
-          </CardTitle>
-          <CardDescription className="text-center text-muted-foreground">
-            Sign in or register to begin your coding adventure
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Error display */}
-          {(authError || formError) && (
-            <Alert variant="destructive\" className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {formError || authError?.message || "An error occurred"}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Primary auth methods */}
-          <div className="space-y-3">
-            <Button 
-              className="w-full bg-[#4285F4] hover:bg-[#3367D6] text-white"
-              onClick={() => signInWithGoogle()}
-              disabled={authLoading || isSubmitting}
-            >
-              {authLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <svg className="mr-2 h-4 w-4\" viewBox="0 0 24 24">
-                  <path
-                    fill="currentColor"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  />
-                </svg>
-              )}
-              Sign in with Google
-            </Button>
-            
-            <Button 
-              className="w-full bg-[#3C3C3D] hover:bg-[#2F2F30] text-white"
-              onClick={() => signInWithMetaMask()}
-              disabled={authLoading || isSubmitting}
-            >
-              {authLoading ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <svg className="mr-2 h-4 w-4\" viewBox="0 0 35 33\" fill="none\" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M32.9582 1L19.8241 10.7183L22.2665 4.99099L32.9582 1Z\" fill="#E2761B\" stroke="#E2761B\" strokeLinecap="round\" strokeLinejoin="round"/>
-                  <path d="M2.04183 1L15.0487 10.809L12.7336 4.99099L2.04183 1Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
-                  <path d="M28.2041 23.5466L24.7182 28.8816L32.0946 30.9307L34.1946 23.6558L28.2041 23.5466Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
-                  <path d="M0.805298 23.6558L2.90524 30.9307L10.2816 28.8816L6.79578 23.5466L0.805298 23.6558Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
-                  <path d="M9.90523 14.5149L7.8324 17.6507L15.1489 17.9782L14.9034 10.0424L9.90523 14.5149Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
-                  <path d="M25.0947 14.5149L20.0138 9.95215L19.8229 17.9782L27.1394 17.6507L25.0947 14.5149Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
-                  <path d="M10.2816 28.8815L14.7125 26.7232L10.9399 23.7049L10.2816 28.8815Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
-                  <path d="M20.2874 26.7232L24.7183 28.8815L24.06 23.7049L20.2874 26.7232Z\" fill="#E4761B\" stroke="#E4761B\" strokeLinecap="round\" strokeLinejoin="round"/>
-                </svg>
-              )}
-              Connect with MetaMask
-            </Button>
-
-            {/* Register Button - Prominent with Python Quest styling */}
-            <Button 
-              onClick={handleEmailSignup}
-              className="w-full bg-[#3DBBAC] hover:bg-[#2A9D90] text-[#101823] font-bold border-2 border-[#3DBBAC] shadow-md"
-              disabled={authLoading || isSubmitting}
-            >
-              {isSubmitting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Code className="mr-2 h-4 w-4" />
-              )}
-              Register for Python Quest
-            </Button>
-
-            {/* Continue as Guest Button */}
-            <Button 
-              variant="outline"
-              onClick={handleContinueAsGuest}
-              className="w-full border-[#2A3441] hover:bg-[#1E293B] text-[#A6B0C2] hover:text-[#3DBBAC]"
-              disabled={authLoading}
-            >
-              Continue as Guest
-            </Button>
+    <ThemeProvider defaultTheme="dark" storageKey="python-quest-theme">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white p-4 selection:bg-cyan-500 selection:text-white">
+        <header className="text-center mb-8 animate-fadeIn">
+          <div className="inline-block p-3 bg-gradient-to-r from-cyan-500 to-green-500 rounded-xl mb-4 shadow-lg">
+            <KeyRound size={48} className="text-white" />
           </div>
+          <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-cyan-400 to-green-400 bg-clip-text text-transparent mb-2">
+            Welcome to Python Quest
+          </h1>
+          <p className="text-lg md:text-xl text-gray-300">Your Secure, Self-Custody Learning Journey.</p>
+        </header>
 
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">
-                Other Options
-              </span>
-            </div>
-          </div>
+        <main className="w-full max-w-md animate-slideUp">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+            <TabsList className="grid w-full grid-cols-3 bg-gray-800/80 border border-gray-700/60 rounded-lg backdrop-blur-sm">
+              <TabsTrigger value="login" className="data-[state=active]:bg-cyan-600/80 data-[state=active]:text-white text-gray-300 hover:text-white transition-colors duration-200">
+                <LogIn size={18} className="mr-2" /> Login
+              </TabsTrigger>
+              <TabsTrigger value="create" className="data-[state=active]:bg-green-600/80 data-[state=active]:text-white text-gray-300 hover:text-white transition-colors duration-200">
+                <UserPlus size={18} className="mr-2" /> Create
+              </TabsTrigger>
+              <TabsTrigger value="guest" className="data-[state=active]:bg-purple-600/80 data-[state=active]:text-white text-gray-300 hover:text-white transition-colors duration-200">
+                <PlayCircle size={18} className="mr-2" /> Guest
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Other options (collapsible) */}
-          <Collapsible
-            open={otherOptionsOpen}
-            onOpenChange={setOtherOptionsOpen}
-            className="w-full"
-          >
-            <CollapsibleTrigger asChild>
-              <Button 
-                variant="outline" 
-                className="w-full flex justify-between items-center"
-              >
-                <span>Other Sign In Options</span>
-                {otherOptionsOpen ? (
-                  <ChevronUp className="h-4 w-4 ml-2" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 ml-2" />
-                )}
-              </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="mt-4">
-              <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="login">Login</TabsTrigger>
-                  <TabsTrigger value="signup">Sign Up</TabsTrigger>
-                  <TabsTrigger value="magic">Magic Link</TabsTrigger>
-                </TabsList>
-                
-                {/* Login Tab */}
-                <TabsContent value="login" className="mt-4">
-                  <form onSubmit={handleEmailLogin} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
+            {/* Login with Keystore Tab */}
+            <TabsContent value="login">
+              <Card className="bg-gray-800/70 border-cyan-500/30 backdrop-blur-sm shadow-xl">
+                <CardHeader>
+                  <CardTitle className="text-2xl text-cyan-400">Login with Keystore</CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Access your account using your secure keystore file and password.
+                  </CardDescription>
+                </CardHeader>
+                <form onSubmit={handleLoginWithKeystore}>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1">
+                      <label htmlFor="keystoreFile" className="text-sm font-medium text-gray-300">Keystore File (.json)</label>
+                      <Input
+                        id="keystoreFile"
+                        type="file"
+                        accept=".json"
+                        onChange={handleFileChange}
+                        className="bg-gray-700 border-gray-600 text-white file:text-cyan-400 file:font-semibold file:mr-2 file:px-3 file:py-1.5 file:rounded-md file:border-0 file:bg-cyan-500/20 hover:file:bg-cyan-500/30 transition-colors duration-200"
+                        disabled={isLoading}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor="loginPassword" className="text-sm font-medium text-gray-300">Password</label>
                       <div className="relative">
-                        <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         <Input
-                          id="email"
-                          type="email"
-                          placeholder="name@example.com"
-                          className="pl-10"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          disabled={isSubmitting}
-                          required
+                          id="loginPassword"
+                          type={showLoginPassword ? "text" : "password"}
+                          value={loginPassword}
+                          onChange={(e) => {setLoginPassword(e.target.value); setLoginError(null); if (setAuthError) setAuthError(null);}}
+                          placeholder="Enter your keystore password"
+                          className="bg-gray-700 border-gray-600 text-white placeholder-gray-500 pr-10"
+                          disabled={isLoading}
                         />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-400 hover:text-gray-200"
+                          onClick={() => setShowLoginPassword(!showLoginPassword)}
+                          aria-pressed={showLoginPassword}
+                          aria-label={showLoginPassword ? "Hide password" : "Show password"}
+                          disabled={isLoading}
+                        >
+                          {showLoginPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="password">Password</Label>
-                      </div>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="password"
-                          type="password"
-                          placeholder="••••••••"
-                          className="pl-10"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          disabled={isSubmitting}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <Button 
-                      type="submit" 
-                      className="w-full"
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Signing in...
-                        </>
-                      ) : (
-                        "Sign In"
-                      )}
+                    {loginError && <p className="text-sm text-red-400 flex items-center pt-1"><AlertTriangle size={16} className="mr-1 flex-shrink-0" />{loginError}</p>}
+                    {authError && activeTab === 'login' && <p className="text-sm text-red-400 flex items-center pt-1"><AlertTriangle size={16} className="mr-1 flex-shrink-0" />{authError}</p>}
+                  </CardContent>
+                  <CardFooter>
+                    <Button type="submit" className="w-full bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200" disabled={isLoading}>
+                      {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
+                      Unlock Keystore
                     </Button>
-                  </form>
-                </TabsContent>
-                
-                {/* Sign Up Tab */}
-                <TabsContent value="signup" className="mt-4">
-                  <form onSubmit={handleEmailSignup} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-email">Email</Label>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  </CardFooter>
+                </form>
+              </Card>
+            </TabsContent>
+
+            {/* Create Account Tab */}
+            <TabsContent value="create">
+              <Card className="bg-gray-800/70 border-green-500/30 backdrop-blur-sm shadow-xl">
+                <CardHeader>
+                  <CardTitle className="text-2xl text-green-400">Create New Account</CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Secure your progress with a self-custody keystore. Choose a strong password.
+                  </CardDescription>
+                </CardHeader>
+                <form onSubmit={handleCreateAccount}>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-1">
+                      <label htmlFor="createPassword" className="text-sm font-medium text-gray-300">Password</label>
+                       <div className="relative">
                         <Input
-                          id="signup-email"
-                          type="email"
-                          placeholder="name@example.com"
-                          className="pl-10"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          disabled={isSubmitting}
-                          required
+                          id="createPassword"
+                          type={showCreatePassword ? "text" : "password"}
+                          value={createPassword}
+                          onChange={(e) => {setCreatePassword(e.target.value); setCreateError(null); if (setAuthError) setAuthError(null);}}
+                          placeholder="Choose a strong password (min. 8 characters)"
+                          className="bg-gray-700 border-gray-600 text-white placeholder-gray-500 pr-10"
+                          disabled={isLoading}
                         />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-400 hover:text-gray-200"
+                          onClick={() => setShowCreatePassword(!showCreatePassword)}
+                          aria-pressed={showCreatePassword}
+                          aria-label={showCreatePassword ? "Hide password" : "Show password"}
+                          disabled={isLoading}
+                        >
+                          {showCreatePassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-password">Password</Label>
+                    <div className="space-y-1">
+                      <label htmlFor="confirmPassword" className="text-sm font-medium text-gray-300">Confirm Password</label>
                       <div className="relative">
-                        <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         <Input
-                          id="signup-password"
-                          type="password"
-                          placeholder="••••••••"
-                          className="pl-10"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          disabled={isSubmitting}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="confirm-password">Confirm Password</Label>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="confirm-password"
-                          type="password"
-                          placeholder="••••••••"
-                          className="pl-10"
+                          id="confirmPassword"
+                          type={showConfirmPassword ? "text" : "password"}
                           value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          disabled={isSubmitting}
-                          required
+                          onChange={(e) => {setConfirmPassword(e.target.value); setCreateError(null); if (setAuthError) setAuthError(null);}}
+                          placeholder="Confirm your password"
+                          className="bg-gray-700 border-gray-600 text-white placeholder-gray-500 pr-10"
+                          disabled={isLoading}
                         />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent text-gray-400 hover:text-gray-200"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          aria-pressed={showConfirmPassword}
+                          aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                          disabled={isLoading}
+                        >
+                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
                       </div>
                     </div>
-                    <Button 
-                      type="submit" 
-                      className="w-full"
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Creating Account...
-                        </>
-                      ) : (
-                        "Create Account"
-                      )}
+                    {createError && <p className="text-sm text-red-400 flex items-center pt-1"><AlertTriangle size={16} className="mr-1 flex-shrink-0" />{createError}</p>}
+                     {authError && activeTab === 'create' && <p className="text-sm text-red-400 flex items-center pt-1"><AlertTriangle size={16} className="mr-1 flex-shrink-0" />{authError}</p>}
+                  </CardContent>
+                  <CardFooter>
+                    <Button type="submit" className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200" disabled={isLoading}>
+                      {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                      Create Account & Download Keystore
                     </Button>
-                  </form>
-                </TabsContent>
-                
-                {/* Magic Link Tab */}
-                <TabsContent value="magic" className="mt-4">
-                  <form onSubmit={handleMagicLink} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="magic-email">Email</Label>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          id="magic-email"
-                          type="email"
-                          placeholder="name@example.com"
-                          className="pl-10"
-                          value={magicLinkEmail}
-                          onChange={(e) => setMagicLinkEmail(e.target.value)}
-                          disabled={isSubmitting}
-                          required
-                        />
-                      </div>
-                    </div>
-                    <Button 
-                      type="submit" 
-                      className="w-full"
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Sending Link...
-                        </>
-                      ) : (
-                        "Send Magic Link"
-                      )}
-                    </Button>
-                  </form>
-                </TabsContent>
-              </Tabs>
-            </CollapsibleContent>
-          </Collapsible>
-        </CardContent>
-        <CardFooter className="flex flex-col space-y-2">
-          <p className="text-center text-sm text-muted-foreground">
-            By continuing, you agree to our{" "}
-            <a href="#" className="underline underline-offset-4 hover:text-primary">
-              Terms of Service
-            </a>{" "}
-            and{" "}
-            <a href="#" className="underline underline-offset-4 hover:text-primary">
-              Privacy Policy
-            </a>
-            .
+                  </CardFooter>
+                </form>
+              </Card>
+            </TabsContent>
+
+            {/* Try as Guest Tab */}
+            <TabsContent value="guest">
+              <Card className="bg-gray-800/70 border-purple-500/30 backdrop-blur-sm shadow-xl">
+                <CardHeader>
+                  <CardTitle className="text-2xl text-purple-400">Try Python Quest</CardTitle>
+                  <CardDescription className="text-gray-400">
+                    Explore the platform as a guest. Your progress will be saved locally in this browser.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-400 mb-4 leading-relaxed">
+                    Click below to start learning immediately. If you enjoy Python Quest, you can create a secure, self-custody keystore account at any time from the main dashboard to save your progress permanently across devices.
+                  </p>
+                </CardContent>
+                <CardFooter>
+                  <Button onClick={handleGuestMode} className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200" disabled={isLoading}>
+                    {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 h-4 w-4" />}
+                    Continue as Guest
+                  </Button>
+                </CardFooter>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </main>
+
+        <footer className="text-center mt-12 animate-fadeIn" style={{ animationDelay: '0.5s' }}>
+          <div className="flex items-center justify-center text-green-400 mb-2">
+            <ShieldCheck size={20} className="mr-2" />
+            <p className="font-semibold">Your Keys, Your Progress, Your Control.</p>
+          </div>
+          <p className="text-xs text-gray-500 max-w-md mx-auto leading-relaxed">
+            Python Quest uses a self-custody keystore model. Your encrypted private key is generated and stored on your device, protected by your password. We never have access to your unencrypted keys or password.
+            <a href="https://github.com/Juniorduc44/pathToPython/blob/factorAI/keyStore_logins_00.md" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-1 font-medium">Learn more</a>.
           </p>
-        </CardFooter>
-      </Card>
-    </div>
+        </footer>
+      </div>
+    </ThemeProvider>
   );
-}
+};
+
+export default LoginPage;
