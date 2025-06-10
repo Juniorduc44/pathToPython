@@ -1,17 +1,21 @@
 /**
  * @file AuthContext.tsx
- * @version 1.1.0-ecdsa
- * @description Manages user authentication state and keystore-based self-custody logic.
- * This context handles guest mode, keystore generation, login, logout, and ensures
- * client-side cryptographic operations for user security and data sovereignty.
- * Uses ECDSA P-256 for key pairs and AES-GCM for keystore encryption.
+ * @version 2.0.0
+ * @description Manages user authentication state with dual authentication support:
+ * 1. Keystore-based self-custody authentication (original)
+ * 2. Supabase-based authentication (new)
+ * 
+ * This context handles guest mode, keystore operations, Supabase auth methods,
+ * and ensures client-side cryptographic operations for user security.
  *
  * @project Python Quest - A Gamified Python Learning Platform
  * @author Factory AI Development Team
- * @date June 2, 2025
+ * @date June 10, 2025
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import supabase, { getURL } from '@/lib/supabase'; // Import Supabase client and getURL
+import { Session, User, AuthError } from '@supabase/supabase-js'; // Import Supabase types
 
 // =====================================================================================
 // CONSTANTS & CONFIGURATION
@@ -33,7 +37,16 @@ const SESSION_STORAGE_KEY = 'pythonQuestAuth';
 // TYPE DEFINITIONS & INTERFACES
 // =====================================================================================
 
-export type AuthMode = 'unauthenticated' | 'guest' | 'keystore';
+// Extended AuthMode to include Supabase authentication
+export type AuthMode = 'unauthenticated' | 'guest' | 'keystore' | 'supabase';
+
+// Profile type for Supabase users
+export type Profile = {
+  id: string;
+  username: string | null;
+  updated_at: string;
+  created_at: string;
+};
 
 export interface Keystore {
   publicKeyHex: string;         // User's public key (ECDSA P-256, SPKI format), hex encoded
@@ -50,19 +63,39 @@ export interface AuthUser {
   publicKeyHex: string;
 }
 
+// Extended AuthContextType to include Supabase functionality
 interface AuthContextType {
+  // General auth state
   authMode: AuthMode;
-  currentUser: AuthUser | null;
   isLoading: boolean;
   error: string | null;
-  setError: (message: string | null) => void; // Added setError
-  isAuthenticated: boolean;
-  isGuest: boolean;
+  setError: (message: string | null) => void;
+  
+  // Auth state flags
+  isAuthenticated: boolean; // True for both keystore and supabase auth
+  isGuest: boolean; // True for guest mode
+  isKeystoreAuthenticated: boolean; // True only for keystore auth
+  isSupabaseAuthenticated: boolean; // True only for supabase auth
+  
+  // Keystore-specific properties and methods
+  currentUser: AuthUser | null;
   createAccount: (password: string) => Promise<void>;
   loginWithKeystore: (keystoreFile: File, password: string) => Promise<void>;
-  logout: () => void;
-  switchToGuestMode: () => void;
   signData: (data: string) => Promise<string | null>;
+  
+  // Supabase-specific properties and methods
+  supabaseUser: User | null;
+  supabaseSession: Session | null;
+  profile: Profile | null;
+  signInWithGitHub: () => Promise<void>;
+  signInWithMagicLink: (email: string) => Promise<void>;
+  signInAnonymously: () => Promise<void>;
+  updateUsername: (username: string) => Promise<void>;
+  refreshProfile: () => Promise<void>;
+  
+  // Combined methods that work for both auth types
+  logout: () => Promise<void>;
+  switchToGuestMode: () => void;
 }
 
 // Helper to convert ArrayBuffer to Base64 string
@@ -97,57 +130,85 @@ const arrayBufferToHex = (buffer: ArrayBuffer): string => {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [authMode, setAuthMode] = useState<AuthMode>('unauthenticated');
+  // Keystore-specific state
+  const [keystoreAuthMode, setKeystoreAuthMode] = useState<'unauthenticated' | 'guest' | 'keystore'>('unauthenticated');
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
   const [sessionPrivateKey, setSessionPrivateKey] = useState<CryptoKey | null>(null);
 
+  // Supabase-specific state
+  const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [supabaseSession, setSupabaseSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  // General auth state
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Computed auth mode based on both auth systems
+  const authMode: AuthMode = useCallback(() => {
+    if (keystoreAuthMode === 'keystore') return 'keystore';
+    if (supabaseUser) {
+      if (supabaseUser.app_metadata?.provider === 'anonymous') return 'guest';
+      return 'supabase';
+    }
+    if (keystoreAuthMode === 'guest') return 'guest';
+    return 'unauthenticated';
+  }, [keystoreAuthMode, supabaseUser])();
+
+  // Computed auth flags
+  const isAuthenticated = authMode === 'keystore' || authMode === 'supabase';
+  const isGuest = authMode === 'guest';
+  const isKeystoreAuthenticated = authMode === 'keystore';
+  const isSupabaseAuthenticated = authMode === 'supabase';
+
+  // =====================================================================================
+  // KEYSTORE AUTHENTICATION LOGIC (EXISTING)
+  // =====================================================================================
+
+  // Initialize keystore auth state from session storage
   useEffect(() => {
-    setIsLoading(true);
-    console.debug("[AuthContext] Initializing auth state from session storage...");
+    console.debug("[AuthContext] Initializing keystore auth state from session storage...");
     try {
       const storedAuth = sessionStorage.getItem(SESSION_STORAGE_KEY);
       if (storedAuth) {
         const { mode, user } = JSON.parse(storedAuth);
         if (mode === 'keystore' && user && user.publicKeyHex) {
-          setAuthMode('keystore');
+          setKeystoreAuthMode('keystore');
           setCurrentUser(user);
           console.debug("[AuthContext] Keystore session restored (publicKey only).");
         } else if (mode === 'guest') {
-          setAuthMode('guest');
+          setKeystoreAuthMode('guest');
           console.debug("[AuthContext] Guest session restored.");
         } else {
-          setAuthMode('unauthenticated');
+          setKeystoreAuthMode('unauthenticated');
         }
       } else {
-        setAuthMode('unauthenticated');
+        setKeystoreAuthMode('unauthenticated');
         console.debug("[AuthContext] No session state found, defaulting to unauthenticated.");
       }
     } catch (e) {
-      console.error("[AuthContext] Error initializing auth state:", e);
-      setAuthMode('unauthenticated');
-    } finally {
-      setIsLoading(false);
+      console.error("[AuthContext] Error initializing keystore auth state:", e);
+      setKeystoreAuthMode('unauthenticated');
     }
   }, []);
 
+  // Persist keystore auth state to session storage
   useEffect(() => {
     if (!isLoading) {
-      console.debug("[AuthContext] Persisting auth state to session storage:", { authMode, currentUser });
+      console.debug("[AuthContext] Persisting keystore auth state to session storage:", { keystoreAuthMode, currentUser });
       try {
-        if (authMode === 'keystore' && currentUser) {
-          sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ mode: authMode, user: currentUser }));
-        } else if (authMode === 'guest') {
-          sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ mode: authMode, user: null }));
+        if (keystoreAuthMode === 'keystore' && currentUser) {
+          sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ mode: keystoreAuthMode, user: currentUser }));
+        } else if (keystoreAuthMode === 'guest') {
+          sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ mode: keystoreAuthMode, user: null }));
         } else {
           sessionStorage.removeItem(SESSION_STORAGE_KEY);
         }
       } catch(e) {
-        console.error("[AuthContext] Error persisting auth state:", e);
+        console.error("[AuthContext] Error persisting keystore auth state:", e);
       }
     }
-  }, [authMode, currentUser, isLoading]);
+  }, [keystoreAuthMode, currentUser, isLoading]);
 
   const generateEcdsaKeyPair = async (): Promise<CryptoKeyPair> => {
     console.debug("[AuthContext] Generating ECDSA P-256 key pair...");
@@ -314,14 +375,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const user: AuthUser = { publicKeyHex };
       setCurrentUser(user);
-      setAuthMode('keystore');
+      setKeystoreAuthMode('keystore');
       setSessionPrivateKey(keyPair.privateKey);
       console.info("[AuthContext] Account created successfully. User is now keystore authenticated.");
 
     } catch (e: any) {
       console.error("[AuthContext] Error creating account:", e, e.stack);
       setError(`Account creation failed: ${e.message || 'Unknown cryptographic error'}`);
-      setAuthMode('unauthenticated');
+      setKeystoreAuthMode('unauthenticated');
       setCurrentUser(null);
       setSessionPrivateKey(null);
     } finally {
@@ -359,7 +420,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       const user: AuthUser = { publicKeyHex: keystoreData.publicKeyHex };
       setCurrentUser(user);
-      setAuthMode('keystore');
+      setKeystoreAuthMode('keystore');
       setSessionPrivateKey(privateKey);
       console.info("[AuthContext] Login successful. User is now keystore authenticated.");
 
@@ -370,7 +431,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } else {
         setError(`Login failed: ${e.message || 'Unknown error during login'}`);
       }
-      setAuthMode('unauthenticated');
+      setKeystoreAuthMode('unauthenticated');
       setCurrentUser(null);
       setSessionPrivateKey(null);
     } finally {
@@ -378,29 +439,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
-  const logout = useCallback((): void => {
-    console.debug("[AuthContext] Logging out...");
-    setAuthMode('unauthenticated');
-    setCurrentUser(null);
-    setSessionPrivateKey(null);
-    setError(null);
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    console.info("[AuthContext] User logged out.");
-  }, []);
-
-  const switchToGuestMode = useCallback((): void => {
-    console.debug("[AuthContext] Switching to guest mode...");
-    if (authMode === 'keystore') {
-        setCurrentUser(null);
-        setSessionPrivateKey(null);
-    }
-    setAuthMode('guest');
-    setError(null);
-    console.info("[AuthContext] Switched to guest mode.");
-  }, [authMode]);
-
   const signData = useCallback(async (dataString: string): Promise<string | null> => {
-    if (!sessionPrivateKey || authMode !== 'keystore') {
+    if (!sessionPrivateKey || keystoreAuthMode !== 'keystore') {
       const msg = "Not authenticated with a keystore to sign data.";
       console.warn(`[AuthContext] ${msg}`);
       setError(msg);
@@ -422,21 +462,304 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setError(`Signing failed: ${e.message || 'Unknown cryptographic error during signing'}`);
       return null;
     }
-  }, [sessionPrivateKey, authMode]);
+  }, [sessionPrivateKey, keystoreAuthMode]);
+
+  // =====================================================================================
+  // SUPABASE AUTHENTICATION LOGIC (NEW)
+  // =====================================================================================
+
+  // Fetch user profile from Supabase
+  const fetchProfile = useCallback(async (userId: string): Promise<Profile | null> => {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, username, updated_at, created_at")
+        .eq("id", userId)
+        .single();
+
+      if (error) {
+        console.error("[AuthContext] Error fetching profile:", error);
+        return null;
+      }
+
+      return data as Profile;
+    } catch (error) {
+      console.error("[AuthContext] Error in fetchProfile:", error);
+      return null;
+    }
+  }, []);
+
+  // Initialize Supabase auth state and set up listener
+  useEffect(() => {
+    const initializeSupabaseAuth = async () => {
+      setIsLoading(true);
+      try {
+        // Check for existing session
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          throw error;
+        }
+
+        if (session) {
+          const user = session.user;
+          const userProfile = await fetchProfile(user.id);
+
+          setSupabaseUser(user);
+          setSupabaseSession(session);
+          setProfile(userProfile);
+        }
+      } catch (error) {
+        console.error("[AuthContext] Error initializing Supabase auth:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeSupabaseAuth();
+
+    // Set up auth state change listener
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("[AuthContext] Supabase auth state changed:", event);
+
+      if (event === "SIGNED_IN" && session) {
+        const user = session.user;
+        const userProfile = await fetchProfile(user.id);
+
+        setSupabaseUser(user);
+        setSupabaseSession(session);
+        setProfile(userProfile);
+      } else if (event === "SIGNED_OUT" || event === "USER_DELETED") {
+        setSupabaseUser(null);
+        setSupabaseSession(null);
+        setProfile(null);
+      }
+    });
+
+    // Clean up subscription on unmount
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [fetchProfile]);
+
+  // Refresh profile data
+  const refreshProfile = useCallback(async (): Promise<void> => {
+    if (!supabaseUser) return;
+    
+    try {
+      const userProfile = await fetchProfile(supabaseUser.id);
+      setProfile(userProfile);
+    } catch (error) {
+      console.error("[AuthContext] Error refreshing profile:", error);
+    }
+  }, [supabaseUser, fetchProfile]);
+
+  // Sign in with GitHub
+  const signInWithGitHub = useCallback(async (): Promise<void> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "github",
+        options: {
+          redirectTo: getURL(),
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+      // Auth state will be updated by the listener
+    } catch (error: any) {
+      console.error("[AuthContext] Error signing in with GitHub:", error);
+      setError(error.message || "Failed to sign in with GitHub");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Sign in with magic link
+  const signInWithMagicLink = useCallback(async (email: string): Promise<void> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: getURL(),
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+      
+      console.info("[AuthContext] Magic link sent successfully.");
+    } catch (error: any) {
+      console.error("[AuthContext] Error sending magic link:", error);
+      setError(error.message || "Failed to send magic link");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Sign in anonymously
+  const signInAnonymously = useCallback(async (): Promise<void> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.signInAnonymously();
+
+      if (error) {
+        throw error;
+      }
+      
+      console.info("[AuthContext] Anonymous sign-in successful.");
+    } catch (error: any) {
+      console.error("[AuthContext] Error signing in anonymously:", error);
+      setError(error.message || "Failed to sign in as guest");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Update username
+  const updateUsername = useCallback(async (username: string): Promise<void> => {
+    if (!supabaseUser) {
+      setError("You must be logged in to update your username");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      // Check if username is already taken
+      const { data: existingUser, error: checkError } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("username", username)
+        .neq("id", supabaseUser.id) // Exclude current user
+        .maybeSingle();
+
+      if (checkError) {
+        throw checkError;
+      }
+
+      if (existingUser) {
+        throw new Error("Username is already taken");
+      }
+
+      // Update the username
+      const { error } = await supabase
+        .from("profiles")
+        .update({ username, updated_at: new Date().toISOString() })
+        .eq("id", supabaseUser.id);
+
+      if (error) {
+        throw error;
+      }
+
+      // Refresh profile data
+      await refreshProfile();
+      console.info("[AuthContext] Username updated successfully.");
+    } catch (error: any) {
+      console.error("[AuthContext] Error updating username:", error);
+      setError(error.message || "Failed to update username");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [supabaseUser, refreshProfile]);
+
+  // =====================================================================================
+  // COMBINED AUTHENTICATION METHODS
+  // =====================================================================================
+
+  // Combined logout function that handles both auth types
+  const logout = useCallback(async (): Promise<void> => {
+    setIsLoading(true);
+    setError(null);
+    console.debug("[AuthContext] Logging out...");
+    
+    try {
+      // Handle Supabase logout if needed
+      if (supabaseUser) {
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          throw error;
+        }
+      }
+      
+      // Handle Keystore logout
+      setKeystoreAuthMode('unauthenticated');
+      setCurrentUser(null);
+      setSessionPrivateKey(null);
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      
+      console.info("[AuthContext] User logged out successfully.");
+    } catch (error: any) {
+      console.error("[AuthContext] Error logging out:", error);
+      setError(error.message || "Failed to log out");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [supabaseUser]);
+
+  // Modified switchToGuestMode to use Supabase anonymous sign-in
+  const switchToGuestMode = useCallback((): void => {
+    console.debug("[AuthContext] Switching to guest mode...");
+    
+    // Use Supabase anonymous sign-in if available
+    signInAnonymously().catch((error) => {
+      console.error("[AuthContext] Failed to use Supabase anonymous sign-in, falling back to local guest mode:", error);
+      
+      // Fallback to local guest mode
+      if (keystoreAuthMode === 'keystore') {
+        setCurrentUser(null);
+        setSessionPrivateKey(null);
+      }
+      setKeystoreAuthMode('guest');
+      setError(null);
+    });
+    
+    console.info("[AuthContext] Switched to guest mode.");
+  }, [keystoreAuthMode, signInAnonymously]);
+
+  // =====================================================================================
+  // CONTEXT PROVIDER
+  // =====================================================================================
 
   const contextValue: AuthContextType = {
+    // General auth state
     authMode,
-    currentUser,
     isLoading,
     error,
-    setError, // Expose setError
-    isAuthenticated: authMode === 'keystore' && !!currentUser,
-    isGuest: authMode === 'guest',
+    setError,
+    
+    // Auth state flags
+    isAuthenticated,
+    isGuest,
+    isKeystoreAuthenticated,
+    isSupabaseAuthenticated,
+    
+    // Keystore-specific properties and methods
+    currentUser,
     createAccount,
     loginWithKeystore,
+    signData,
+    
+    // Supabase-specific properties and methods
+    supabaseUser,
+    supabaseSession,
+    profile,
+    signInWithGitHub,
+    signInWithMagicLink,
+    signInAnonymously,
+    updateUsername,
+    refreshProfile,
+    
+    // Combined methods
     logout,
     switchToGuestMode,
-    signData,
   };
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
